@@ -1,0 +1,48 @@
+:root {
+  --paper: #eee7da;
+  --label: #fbfaf6;
+  --kraft: #caa475;
+  --kraft-dark: #9c7546;
+  --ink: #141414;
+  --muted: #6b6257;
+  --hot: #ff4f1a;
+
+  --display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  color-scheme: light;
+  color: var(--ink);
+  font: 400 14px/1.5 var(--mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  /* stockroom floor: faint graph-paper grid on warm paper */
+  background:
+    linear-gradient(rgba(20, 20, 20, 0.05) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, rgba(20, 20, 20, 0.05) 1px, transparent 1px) 0 0 / 28px 28px,
+    var(--paper);
+}
+
+button:focus-visible {
+  outline: 3px solid var(--hot);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

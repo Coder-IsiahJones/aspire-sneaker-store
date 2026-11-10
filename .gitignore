@@ -1,0 +1,14 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Node
+node_modules/
+dist/
+*.log
+
+# Editors and OS
+.idea/
+.DS_Store
