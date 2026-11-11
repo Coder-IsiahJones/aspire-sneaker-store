@@ -10,7 +10,7 @@ A small demo store with three parts, all started by one `aspire run`:
 
 ## Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [.NET 11 SDK](https://dotnet.microsoft.com/download) (pinned in `global.json`)
 - [Aspire CLI](https://aspire.dev/get-started/install-cli/) 13.6 or newer
 - Docker (Docker Desktop, or Docker Engine on Linux)
 - Node.js 24 (`nvm use` picks it up from `.nvmrc`)
