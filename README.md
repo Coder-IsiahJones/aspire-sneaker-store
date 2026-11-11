@@ -47,6 +47,16 @@ nvm use 24 >/dev/null
 
 Then restart the server with `wsl --shutdown` from Windows and reopen the folder.
 
+## Tests
+
+```bash
+dotnet test --project SneakerStore.Api.Tests   # API, needs Docker
+cd web && npm test                             # frontend
+```
+
+- `SneakerStore.Api.Tests/` uses xUnit v3. The endpoint and seeder tests start a throwaway `mongo:8.0` container with Testcontainers and run the API in memory against it, so the sorting and brand filtering are checked against real MongoDB collation. `global.json` opts `dotnet test` into Microsoft.Testing.Platform, which xUnit v3 needs on the .NET 10+ SDK.
+- `web/` uses Vitest with Vue Test Utils and happy-dom. Tests sit next to the code they cover (`*.test.ts`) and mock `fetch` or the `api` module, so they don't need the API running. `npm run test:watch` reruns them on save.
+
 ## How the pieces connect
 
 | Piece | How it gets its connection info |
