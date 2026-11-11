@@ -16,13 +16,25 @@ builder.Services.AddSingleton(sp =>
     
 builder.Services.AddSingleton<SneakerSeeder>();
 
+builder.Services.AddOpenApi();
+
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
 
+if (app.Environment.IsDevelopment())
+{
+    // OpenAPI document at /openapi/v1.json, Swagger UI at /swagger.
+    app.MapOpenApi();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/openapi/v1.json", "Sneaker Store API v1");
+    });
+}
+
 await app.Services.GetRequiredService<SneakerSeeder>().SeedAsync();
 
-var api = app.MapGroup("/api");
+var api = app.MapGroup("/api").WithTags("Sneakers");
 
 api.MapGet("/sneakers", async (string? brand, IMongoCollection<Sneaker> sneakers) =>
 {
@@ -37,7 +49,10 @@ api.MapGet("/sneakers", async (string? brand, IMongoCollection<Sneaker> sneakers
         .SortBy(s => s.Brand)
         .ThenBy(s => s.Name)
         .ToListAsync();
-});
+})
+.WithName("ListSneakers")
+.WithSummary("List sneakers, optionally filtered by brand")
+.Produces<List<Sneaker>>();
 
 api.MapGet("/sneakers/{id}", async (string id, IMongoCollection<Sneaker> sneakers) =>
 {
@@ -48,7 +63,11 @@ api.MapGet("/sneakers/{id}", async (string id, IMongoCollection<Sneaker> sneaker
 
     var sneaker = await sneakers.Find(s => s.Id == id).FirstOrDefaultAsync();
     return sneaker is null ? Results.NotFound() : Results.Ok(sneaker);
-});
+})
+.WithName("GetSneaker")
+.WithSummary("Get one sneaker by id")
+.Produces<Sneaker>()
+.Produces(StatusCodes.Status404NotFound);
 
 api.MapGet("/brands", async (IMongoCollection<Sneaker> sneakers) =>
 {
@@ -57,6 +76,9 @@ api.MapGet("/brands", async (IMongoCollection<Sneaker> sneakers) =>
         .ToListAsync();
 
     return brands.Order(StringComparer.OrdinalIgnoreCase);
-});
+})
+.WithName("ListBrands")
+.WithSummary("List distinct brand names")
+.Produces<IEnumerable<string>>();
 
 app.Run();

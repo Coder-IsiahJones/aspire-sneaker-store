@@ -62,5 +62,7 @@ Then restart the server with `wsl --shutdown` from Windows and reopen the folder
 | `GET /api/sneakers/{id}` | One sneaker |
 | `GET /api/brands` | Distinct brand names |
 | `GET /health` | Health checks, including MongoDB (Development only) |
+| `GET /swagger` | Swagger UI (Development only). The dashboard links to it from the `api` resource. |
+| `GET /openapi/v1.json` | OpenAPI document (Development only) |
 
 Brand and model names in the seed data are used only to describe the shoes. The illustrations are drawn in SVG, and there are no product photos.

@@ -14,7 +14,9 @@ var sneakerDb = mongo.AddDatabase("sneakerdb");
 var api = builder.AddDotnetProject("api", "./SneakerStore.Api/SneakerStore.Api.csproj")
     .WithReference(sneakerDb)
     .WaitFor(sneakerDb)
-    .WithHttpHealthCheck("/health");
+    .WithHttpHealthCheck("/health")
+    // Adds a "Swagger UI" link next to the API in the dashboard.
+    .WithUrlForEndpoint("http", _ => new() { Url = "/swagger", DisplayText = "Swagger UI" });
 
 builder.AddViteApp("web", "./web")
     .WithReference(api)

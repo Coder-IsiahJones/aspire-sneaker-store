@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.MongoDB.Driver" Version="17.1.0-preview.1.26560.7" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="11.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="11.0.0" />
   </ItemGroup>
 
   <PropertyGroup>
