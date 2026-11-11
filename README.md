@@ -31,6 +31,22 @@ docker volume ls | grep mongo-data
 docker volume rm <volume-name>
 ```
 
+### From VS Code
+
+Install the recommended extensions (the Aspire extension and C# Dev Kit), then press F5 and pick **Aspire: Run sneaker store**. The debugger attaches to the API, so breakpoints in `SneakerStore.Api` work. The **(http)** variant serves the dashboard over plain HTTP, which avoids certificate warnings when the dev certificate isn't trusted.
+
+VS Code starts the AppHost with its own environment, not your terminal's, so `dotnet`, `aspire`, `docker`, and Node 24 all have to be on its `PATH`. On WSL, VS Code's server doesn't run `.bashrc`. Put the setup in `~/.vscode-server/server-env-setup` instead:
+
+```sh
+export DOTNET_ROOT="$HOME/.dotnet"
+export PATH="$DOTNET_ROOT:$DOTNET_ROOT/tools:$HOME/.aspire/bin:$PATH"
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
+nvm use 24 >/dev/null
+```
+
+Then restart the server with `wsl --shutdown` from Windows and reopen the folder.
+
 ## How the pieces connect
 
 | Piece | How it gets its connection info |

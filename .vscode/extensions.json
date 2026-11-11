@@ -1,5 +1,7 @@
 {
   "recommendations": [
-    "microsoft-aspire.aspire-vscode"
+    "microsoft-aspire.aspire-vscode",
+    "ms-dotnettools.csdevkit",
+    "vue.volar"
   ]
 }

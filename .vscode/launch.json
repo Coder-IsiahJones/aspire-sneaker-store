@@ -1,0 +1,23 @@
+{
+  // Requires the Aspire extension (microsoft-aspire.aspire-vscode) and C# Dev Kit.
+  // F5 runs `aspire run` on the AppHost named in aspire.config.json and attaches
+  // the .NET debugger to the API, so breakpoints in SneakerStore.Api work.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "aspire",
+      "request": "launch",
+      "name": "Aspire: Run sneaker store",
+      "program": "${workspaceFolder}"
+    },
+    {
+      // Same app, but the dashboard is served over plain HTTP. Useful when the
+      // ASP.NET Core dev certificate isn't trusted by your browser (common on WSL).
+      "type": "aspire",
+      "request": "launch",
+      "name": "Aspire: Run sneaker store (http)",
+      "program": "${workspaceFolder}",
+      "launchProfile": "http"
+    }
+  ]
+}
