@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
 import { getBag, getBrands, getDrops, getSneakers } from './api'
+import { useAccount } from './composables/useAccount'
 import { useCart } from './composables/useCart'
 import { makeDrop } from './test/drop'
 import { resetFakeBag } from './test/fakeBag'
@@ -127,6 +128,18 @@ describe('App', () => {
     await flushPromises()
 
     expect(cardNames(wrapper)).toEqual(['Samba OG', 'Dunk Low'])
+    wrapper.unmount()
+  })
+
+  it('offers sign-in and opens the account drawer', async () => {
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.get('button.pass-tag').text()).toBe('Sign in')
+    await wrapper.get('button.pass-tag').trigger('click')
+
+    expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('Account')
+    useAccount().panelOpen.value = false
     wrapper.unmount()
   })
 

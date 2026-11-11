@@ -1,6 +1,6 @@
 import { computed, reactive } from 'vue'
 import { addToBag, getBag, removeFromBag, type BagLine, type Sneaker } from '../api'
-import { getEntrantId } from './useDrops'
+import { getEntrantId } from './entrant'
 
 export type CartLine = BagLine
 

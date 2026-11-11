@@ -1,32 +1,11 @@
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { enterDrop, getDrops, type Drop } from '../api'
+import { getEntrantId } from './entrant'
+import { useAccount } from './useAccount'
 
-const ENTRANT_KEY = 'stockroom.entrant'
 const POLL_MS = 30_000
 // Refetch just after a timer hits zero, so the server has definitely changed phase.
 const BOUNDARY_GRACE_MS = 300
-
-let sessionEntrant: string | undefined
-
-function newEntrantId() {
-  // getRandomValues, because randomUUID only exists on HTTPS and localhost.
-  const bytes = crypto.getRandomValues(new Uint8Array(16))
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
-}
-
-/** A random id that stands in for an account, so a browser can only enter a drop once. */
-export function getEntrantId(): string {
-  try {
-    const stored = localStorage.getItem(ENTRANT_KEY)
-    if (stored) return stored
-    const created = sessionEntrant ?? newEntrantId()
-    localStorage.setItem(ENTRANT_KEY, created)
-    return created
-  } catch {
-    // Storage can be blocked. Entries then last only as long as the page does.
-    return (sessionEntrant ??= newEntrantId())
-  }
-}
 
 export function useDrops() {
   const drops = ref<Drop[]>([])
@@ -87,6 +66,10 @@ export function useDrops() {
       entering.value = undefined
     }
   }
+
+  // Entries belong to whoever is signed in, and ordering a won pair changes its ticket.
+  const { account, orders } = useAccount()
+  watch([() => account.value?.email, () => orders.value.length], () => void load())
 
   onMounted(() => {
     tick = setInterval(() => (now.value = serverNow()), 1000)

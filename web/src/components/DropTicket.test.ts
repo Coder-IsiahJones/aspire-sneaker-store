@@ -118,6 +118,15 @@ describe('DropTicket', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain("didn't go through")
   })
 
+  it('stops offering a pair that has been ordered', () => {
+    const wrapper = mountTicket(
+      makeDrop({ phase: 'closed', entry: { size: 10, result: 'won', claimed: true } }),
+    )
+
+    expect(wrapper.find('button.go').exists()).toBe(false)
+    expect(wrapper.get('[role="status"]').text()).toContain('This pair is in your orders.')
+  })
+
   it('tells a loser and offers nothing to buy', () => {
     const wrapper = mountTicket(makeDrop({ phase: 'closed', entry: { size: 10, result: 'lost' } }))
 

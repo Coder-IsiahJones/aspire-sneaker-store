@@ -34,6 +34,9 @@ public sealed class Drop
     // Entrant ids of the winners. Null until the draw has run. Never sent to clients.
     public List<string>? Winners { get; init; }
 
+    // Winners who have already ordered their pair. Never sent to clients.
+    public List<string> Claimed { get; init; } = [];
+
     public string PhaseAt(DateTime now) =>
         now < OpensAt ? DropPhase.Upcoming
         : now < ClosesAt ? DropPhase.Open
@@ -57,12 +60,13 @@ public sealed class DropEntry
         Size,
         drop.Winners is null ? DropResult.Pending
         : drop.Winners.Contains(EntrantId) ? DropResult.Won
-        : DropResult.Lost);
+        : DropResult.Lost,
+        drop.Claimed.Contains(EntrantId));
 }
 
 public sealed record EnterDropRequest(double Size);
 
-public sealed record DropEntryStatus(double Size, string Result);
+public sealed record DropEntryStatus(double Size, string Result, bool Claimed = false);
 
 public sealed record DropResponse(
     string Id,

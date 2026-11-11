@@ -1,6 +1,7 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { removeFromBag } from '../api'
+import { placeOrder, removeFromBag } from '../api'
+import { useAccount } from '../composables/useAccount'
 import { useCart } from '../composables/useCart'
 import { resetFakeBag } from '../test/fakeBag'
 import { makeSneaker } from '../test/sneaker'
@@ -8,7 +9,13 @@ import CartDrawer from './CartDrawer.vue'
 
 vi.mock('../api', async () => (await import('../test/fakeBag')).fakeBagApi)
 
-beforeEach(() => resetFakeBag(useCart()))
+beforeEach(async () => {
+  await resetFakeBag(useCart())
+  const state = useAccount()
+  state.account.value = null
+  state.orders.value = []
+  state.panelOpen.value = false
+})
 
 let wrapper: VueWrapper | undefined
 
@@ -84,6 +91,48 @@ describe('CartDrawer', () => {
 
     expect(drawer.findAll('.line')).toHaveLength(1)
     expect(drawer.get('[role="alert"]').text()).toContain("Couldn't remove")
+  })
+
+  it('sends a signed-out shopper to sign in instead of ordering', async () => {
+    await useCart().add(makeSneaker(), 9)
+    const drawer = mountDrawer()
+
+    expect(drawer.get('button.checkout').text()).toBe('Sign in to check out')
+    await drawer.get('button.checkout').trigger('click')
+
+    expect(placeOrder).not.toHaveBeenCalled()
+    expect(useAccount().panelOpen.value).toBe(true)
+    expect(drawer.emitted('update:modelValue')).toEqual([[false]])
+  })
+
+  it('places the order and shows it in the account drawer', async () => {
+    useAccount().account.value = { email: 'me@example.com' }
+    await useCart().add(makeSneaker(), 9)
+    const drawer = mountDrawer()
+
+    await drawer.get('button.checkout').trigger('click')
+    await flushPromises()
+
+    expect(placeOrder).toHaveBeenCalledTimes(1)
+    expect(useAccount().panelOpen.value).toBe(true)
+    expect(drawer.emitted('update:modelValue')).toEqual([[false]])
+  })
+
+  it('stays open and says so when ordering fails', async () => {
+    useAccount().account.value = { email: 'me@example.com' }
+    await useCart().add(makeSneaker(), 9)
+    vi.mocked(placeOrder).mockRejectedValueOnce(new Error('409'))
+    const drawer = mountDrawer()
+
+    await drawer.get('button.checkout').trigger('click')
+    await flushPromises()
+
+    expect(drawer.get('[role="alert"]').text()).toContain("Couldn't place")
+    expect(drawer.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('offers no checkout for an empty bag', () => {
+    expect(mountDrawer().find('button.checkout').exists()).toBe(false)
   })
 
   it.each([

@@ -41,6 +41,8 @@ public sealed class MongoFixture : IAsyncLifetime
             builder.UseEnvironment("Development");
             builder.UseSetting("ConnectionStrings:sneakerdb", apiConnectionString);
             builder.UseSetting("ConnectionStrings:redis", _redis.GetConnectionString());
+            // Every test client shares one address, so the real limit would trip immediately.
+            builder.UseSetting("Auth:AttemptsPerMinute", "100000");
         });
     }
 

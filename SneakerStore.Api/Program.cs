@@ -1,8 +1,13 @@
+using System.Security.Claims;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OutputCaching;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using SneakerStore.Api.Data;
+using SneakerStore.Api.Endpoints;
 using SneakerStore.Api.Models;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -30,12 +35,55 @@ builder.Services.AddSingleton<DropRaffle>();
 builder.AddRedisOutputCache("redis");
 builder.Services.AddOutputCache(options =>
 {
-    options.AddPolicy(CatalogCache.Policy, policy => policy
-        .Expire(TimeSpan.FromSeconds(60))
-        .SetVaryByQuery("brand")
-        .Tag(CatalogCache.Tag));
+    options.AddPolicy(CatalogCache.Policy, new CatalogCachePolicy());
 });
 builder.Services.AddSingleton<BagStore>();
+
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IMongoDatabase>().GetCollection<Account>("accounts"));
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IMongoDatabase>().GetCollection<Order>("orders"));
+builder.Services.AddSingleton<AccountIndexes>();
+builder.Services.AddSingleton<OrderStore>();
+builder.Services.AddSingleton<IPasswordHasher<Account>, PasswordHasher<Account>>();
+
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "stockroom.session";
+        options.Cookie.HttpOnly = true;
+        // Strict keeps the cookie off requests from other sites, which is the CSRF protection here.
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        // Local development is plain HTTP through the Vite proxy. HTTPS requests still get Secure.
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.ExpireTimeSpan = TimeSpan.FromDays(14);
+        options.SlidingExpiration = true;
+
+        // This is an API, so answer with status codes instead of redirecting to a login page.
+        options.Events.OnRedirectToLogin = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    });
+builder.Services.AddAuthorization();
+
+// Slows password guessing. Behind a reverse proxy this needs forwarded headers,
+// or every visitor shares the proxy's address.
+var attemptsPerMinute = builder.Configuration.GetValue("Auth:AttemptsPerMinute", 10);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(AccountEndpoints.RateLimitPolicy, context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = attemptsPerMinute, Window = TimeSpan.FromMinutes(1) }));
+});
 
 builder.Services.AddOpenApi();
 
@@ -44,6 +92,9 @@ var app = builder.Build();
 app.MapDefaultEndpoints();
 
 app.UseOutputCache();
+app.UseAuthentication();
+app.UseRateLimiter();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
@@ -57,6 +108,7 @@ if (app.Environment.IsDevelopment())
 
 await app.Services.GetRequiredService<SneakerSeeder>().SeedAsync();
 await app.Services.GetRequiredService<DropSeeder>().SeedAsync();
+await app.Services.GetRequiredService<AccountIndexes>().EnsureAsync();
 
 // Redis outlives the API, so drop anything cached from before this start's seed.
 await app.Services.GetRequiredService<IOutputCacheStore>().EvictByTagAsync(CatalogCache.Tag, default);
@@ -112,6 +164,7 @@ var dropsApi = app.MapGroup("/api").WithTags("Drops");
 
 dropsApi.MapGet("/drops", async (
     [FromHeader(Name = "X-Entrant-Id")] string? entrantHeader,
+    ClaimsPrincipal user,
     IMongoCollection<Drop> drops,
     IMongoCollection<DropEntry> entries,
     DropRaffle raffle) =>
@@ -130,7 +183,7 @@ dropsApi.MapGet("/drops", async (
             .ToListAsync())
         .ToDictionary(c => c.DropId, c => c.Count);
 
-    var mine = TryNormalizeEntrant(entrantHeader, out var entrantId)
+    var mine = ShopperIdentity.TryResolve(user, entrantHeader, out var entrantId)
         ? (await entries.Find(e => e.EntrantId == entrantId).ToListAsync()).ToDictionary(e => e.DropId)
         : [];
 
@@ -163,6 +216,7 @@ dropsApi.MapPost("/drops/{id}/entries", async (
     string id,
     EnterDropRequest request,
     [FromHeader(Name = "X-Entrant-Id")] string? entrantHeader,
+    ClaimsPrincipal user,
     IMongoCollection<Drop> drops,
     IMongoCollection<DropEntry> entries) =>
 {
@@ -177,7 +231,7 @@ dropsApi.MapPost("/drops/{id}/entries", async (
         return Results.NotFound();
     }
 
-    if (!TryNormalizeEntrant(entrantHeader, out var entrantId))
+    if (!ShopperIdentity.TryResolve(user, entrantHeader, out var entrantId))
     {
         return BadEntrant();
     }
@@ -214,8 +268,8 @@ dropsApi.MapPost("/drops/{id}/entries", async (
 
 var bagApi = app.MapGroup("/api").WithTags("Bag");
 
-bagApi.MapGet("/bag", async ([FromHeader(Name = "X-Entrant-Id")] string? entrantHeader, BagStore bag) =>
-    TryNormalizeEntrant(entrantHeader, out var shopperId)
+bagApi.MapGet("/bag", async ([FromHeader(Name = "X-Entrant-Id")] string? entrantHeader, ClaimsPrincipal user, BagStore bag) =>
+    ShopperIdentity.TryResolve(user, entrantHeader, out var shopperId)
         ? Results.Ok(await bag.GetAsync(shopperId))
         : BadEntrant())
 .WithName("GetBag")
@@ -226,9 +280,10 @@ bagApi.MapGet("/bag", async ([FromHeader(Name = "X-Entrant-Id")] string? entrant
 bagApi.MapPost("/bag/items", async (
     AddToBagRequest request,
     [FromHeader(Name = "X-Entrant-Id")] string? entrantHeader,
+    ClaimsPrincipal user,
     BagStore bag) =>
 {
-    if (!TryNormalizeEntrant(entrantHeader, out var shopperId))
+    if (!ShopperIdentity.TryResolve(user, entrantHeader, out var shopperId))
     {
         return BadEntrant();
     }
@@ -239,6 +294,7 @@ bagApi.MapPost("/bag/items", async (
         BagAddResult.NotFound => Results.NotFound(),
         BagAddResult.InvalidSize => Results.Problem("That size isn't available.", statusCode: StatusCodes.Status400BadRequest),
         BagAddResult.NotWinner => Results.Problem("Only the raffle's winners can bag this pair.", statusCode: StatusCodes.Status403Forbidden),
+        BagAddResult.AlreadyOrdered => Results.Problem("This pair has already been ordered.", statusCode: StatusCodes.Status409Conflict),
         _ => Results.Problem("This pair is already in the bag.", statusCode: StatusCodes.Status409Conflict),
     };
 })
@@ -253,9 +309,10 @@ bagApi.MapPost("/bag/items", async (
 bagApi.MapDelete("/bag/items/{key}", async (
     string key,
     [FromHeader(Name = "X-Entrant-Id")] string? entrantHeader,
+    ClaimsPrincipal user,
     BagStore bag) =>
 {
-    if (!TryNormalizeEntrant(entrantHeader, out var shopperId))
+    if (!ShopperIdentity.TryResolve(user, entrantHeader, out var shopperId))
     {
         return BadEntrant();
     }
@@ -268,20 +325,9 @@ bagApi.MapDelete("/bag/items/{key}", async (
 .Produces<List<BagLine>>()
 .ProducesProblem(StatusCodes.Status400BadRequest);
 
+app.MapAccountEndpoints();
+
 app.Run();
 
 static IResult BadEntrant() =>
     Results.Problem("X-Entrant-Id must be a GUID.", statusCode: StatusCodes.Status400BadRequest);
-
-// Normalized so the same GUID written two ways can't count as two entrants.
-static bool TryNormalizeEntrant(string? header, out string entrantId)
-{
-    if (Guid.TryParse(header, out var guid) && guid != Guid.Empty)
-    {
-        entrantId = guid.ToString("N");
-        return true;
-    }
-
-    entrantId = "";
-    return false;
-}

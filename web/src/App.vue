@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { getBrands, getSneakers, type Sneaker } from './api'
+import AccountDrawer from './components/AccountDrawer.vue'
 import BrandFilter from './components/BrandFilter.vue'
 import CartDrawer from './components/CartDrawer.vue'
 import DropsDock from './components/DropsDock.vue'
 import SneakerCard from './components/SneakerCard.vue'
+import { useAccount } from './composables/useAccount'
 import { useCart } from './composables/useCart'
 
 const sneakers = ref<Sneaker[]>([])
@@ -15,6 +17,7 @@ const error = ref<string>()
 const cartOpen = ref(false)
 
 const { count, load: loadBag } = useCart()
+const { account, panelOpen, load: loadAccount } = useAccount()
 
 async function load() {
   loading.value = true
@@ -30,6 +33,7 @@ async function load() {
 
 onMounted(async () => {
   void loadBag()
+  void loadAccount()
   await load()
   brands.value = await getBrands().catch(() => [])
 })
@@ -48,9 +52,14 @@ watch(brand, load)
         Twelve pairs, all deadstock. The catalog lives in MongoDB, a C# API serves it, and Aspire
         runs the whole thing.
       </p>
-      <button type="button" class="cart-tag" @click="cartOpen = true">
-        Bag <span class="cart-count">{{ count }}</span>
-      </button>
+      <div class="tags">
+        <button type="button" class="pass-tag" @click="panelOpen = true">
+          {{ account ? 'My pass' : 'Sign in' }}
+        </button>
+        <button type="button" class="cart-tag" @click="cartOpen = true">
+          Bag <span class="cart-count">{{ count }}</span>
+        </button>
+      </div>
     </header>
 
     <DropsDock />
@@ -69,6 +78,7 @@ watch(brand, load)
     </main>
 
     <CartDrawer v-model="cartOpen" />
+    <AccountDrawer v-model="panelOpen" />
   </div>
 </template>
 
@@ -111,6 +121,30 @@ watch(brand, load)
   justify-self: end;
   color: var(--muted);
   font-size: 13px;
+}
+
+.tags {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pass-tag {
+  padding: 10px 14px 8px;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  background: var(--kraft);
+  color: var(--ink);
+  font: 900 18px/1 var(--display);
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 3px 3px 0 var(--ink);
+  transform: rotate(-2deg);
+  transition: transform 0.15s ease;
+}
+
+.pass-tag:hover {
+  transform: rotate(0deg);
 }
 
 .cart-tag {

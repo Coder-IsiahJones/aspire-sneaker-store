@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { addToBag, type BagLine } from '../api'
+import { addToBag, saveToWishlist, type BagLine } from '../api'
+import { useAccount } from '../composables/useAccount'
 import { useCart } from '../composables/useCart'
 import { resetFakeBag } from '../test/fakeBag'
 import { makeSneaker } from '../test/sneaker'
@@ -122,6 +123,31 @@ describe('SneakerCard', () => {
     finish([])
     await flushPromises()
     expect(addButton(wrapper).attributes('disabled')).toBeUndefined()
+  })
+
+  it('asks a signed-out shopper to sign in instead of saving', async () => {
+    const { wrapper } = mountCard()
+
+    await wrapper.get('button.save').trigger('click')
+    await flushPromises()
+
+    expect(useAccount().panelOpen.value).toBe(true)
+    expect(saveToWishlist).not.toHaveBeenCalled()
+    useAccount().panelOpen.value = false
+  })
+
+  it('saves for a signed-in shopper and shows it', async () => {
+    useAccount().account.value = { email: 'me@example.com' }
+    const { sneaker, wrapper } = mountCard()
+
+    await wrapper.get('button.save').trigger('click')
+    await flushPromises()
+
+    expect(saveToWishlist).toHaveBeenCalledWith(sneaker.id)
+    expect(wrapper.get('button.save').text()).toBe('★ Saved')
+    expect(wrapper.get('button.save').attributes('aria-pressed')).toBe('true')
+    useAccount().account.value = null
+    useAccount().wishlist.value = []
   })
 
   it('draws a barcode that depends on the SKU', () => {

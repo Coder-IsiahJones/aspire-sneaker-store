@@ -3,7 +3,7 @@ import { addToBag, getBag, removeFromBag, type BagLine } from '../api'
 import { resetFakeBag } from '../test/fakeBag'
 import { makeSneaker } from '../test/sneaker'
 import { formatPrice, useCart } from './useCart'
-import { getEntrantId } from './useDrops'
+import { getEntrantId } from './entrant'
 
 vi.mock('../api', async () => (await import('../test/fakeBag')).fakeBagApi)
 

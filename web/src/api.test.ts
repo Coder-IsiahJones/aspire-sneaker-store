@@ -1,5 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
-import { addToBag, enterDrop, getBag, getBrands, getDrops, getSneakers, removeFromBag } from './api'
+import {
+  addToBag,
+  ApiError,
+  enterDrop,
+  getAccount,
+  getBag,
+  getBrands,
+  getDrops,
+  getOrders,
+  getSneakers,
+  getWishlist,
+  placeOrder,
+  registerAccount,
+  removeFromBag,
+  removeFromWishlist,
+  saveToWishlist,
+  signIn,
+  signOut,
+} from './api'
 import { makeSneaker } from './test/sneaker'
 
 function stubFetch(response: Response) {
@@ -95,6 +113,77 @@ describe('bag', () => {
     stubFetch(new Response(null, { status: 403, statusText: 'Forbidden' }))
 
     await expect(addToBag('abc123', 'shoe1', 9)).rejects.toThrow('403 Forbidden from /api/bag/items')
+  })
+})
+
+describe('account', () => {
+  it('reads the session', async () => {
+    const fetch = stubFetch(json({ account: null }))
+
+    await expect(getAccount()).resolves.toEqual({ account: null })
+    expect(fetch).toHaveBeenCalledWith('/api/account')
+  })
+
+  it.each([
+    ['/api/account/sign-in', signIn],
+    ['/api/account/register', registerAccount],
+  ])('posts credentials to %s with the browser id', async (path, call) => {
+    const fetch = stubFetch(json({ email: 'a@b.co' }))
+
+    await call('abc123', 'a@b.co', 'long enough')
+
+    expect(fetch).toHaveBeenCalledWith(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Entrant-Id': 'abc123' },
+      body: JSON.stringify({ email: 'a@b.co', password: 'long enough' }),
+    })
+  })
+
+  it('exposes the status of a refused sign-in', async () => {
+    stubFetch(new Response(null, { status: 401, statusText: 'Unauthorized' }))
+
+    const error = await signIn('abc123', 'a@b.co', 'wrong password').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).status).toBe(401)
+  })
+
+  it('signs out without expecting a body', async () => {
+    const fetch = stubFetch(new Response(null, { status: 204 }))
+
+    await expect(signOut()).resolves.toBeUndefined()
+    expect(fetch).toHaveBeenCalledWith('/api/account/sign-out', { method: 'POST' })
+  })
+
+  it('reads the wishlist and orders', async () => {
+    const fetch = vi.fn().mockImplementation(async () => json([]))
+    vi.stubGlobal('fetch', fetch)
+
+    await getWishlist()
+    await getOrders()
+
+    expect(fetch.mock.calls).toEqual([['/api/wishlist'], ['/api/orders']])
+  })
+
+  it('saves and removes wishlist items', async () => {
+    const fetch = vi.fn().mockImplementation(async () => json([]))
+    vi.stubGlobal('fetch', fetch)
+
+    await saveToWishlist('shoe1')
+    await removeFromWishlist('shoe1')
+
+    expect(fetch.mock.calls).toEqual([
+      ['/api/wishlist/shoe1', { method: 'PUT' }],
+      ['/api/wishlist/shoe1', { method: 'DELETE' }],
+    ])
+  })
+
+  it('places an order', async () => {
+    const fetch = stubFetch(json({ id: 'order1' }))
+
+    await placeOrder()
+
+    expect(fetch).toHaveBeenCalledWith('/api/orders', { method: 'POST' })
   })
 })
 

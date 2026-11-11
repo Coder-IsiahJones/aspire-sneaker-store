@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { enterDrop, getDrops, type Drop } from '../api'
 import { inMinutes, makeDrop, NOW } from '../test/drop'
-import { getEntrantId, useDrops } from './useDrops'
+import { getEntrantId } from './entrant'
+import { useAccount } from './useAccount'
+import { useDrops } from './useDrops'
 
 vi.mock('../api', () => ({
   getDrops: vi.fn(),
@@ -119,6 +121,20 @@ describe('useDrops', () => {
     respond([])
     await vi.advanceTimersByTimeAsync(30_000)
     expect(state.drops.value).toEqual([])
+    wrapper.unmount()
+  })
+
+  it('refetches when the signed-in account changes', async () => {
+    respond([makeDrop()])
+    const { wrapper } = mountDrops()
+    await flushPromises()
+    expect(getDrops).toHaveBeenCalledTimes(1)
+
+    useAccount().account.value = { email: 'me@example.com' }
+    await flushPromises()
+
+    expect(getDrops).toHaveBeenCalledTimes(2)
+    useAccount().account.value = null
     wrapper.unmount()
   })
 

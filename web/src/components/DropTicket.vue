@@ -133,6 +133,10 @@ async function claim() {
           <strong>You're in, size {{ drop.entry?.size }}.</strong> Come back when the timer hits zero.
         </p>
 
+        <p v-else-if="won && drop.entry?.claimed" class="note" role="status">
+          <strong>Yours, size {{ drop.entry?.size }}.</strong> This pair is in your orders.
+        </p>
+
         <template v-else-if="won">
           <p class="note" role="status"><strong>You won a pair, size {{ drop.entry?.size }}.</strong></p>
           <button type="button" class="go go-hot" :disabled="inBag || claiming" @click="claim">

@@ -33,4 +33,41 @@ public sealed class DropRaffle(IMongoCollection<Drop> drops, IMongoCollection<Dr
 
         return await drops.Find(d => d.Id == drop.Id).FirstAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Moves a browser's raffle entries to an account when it signs in, including any wins.
+    /// An account gets one entry per drop, so if it already entered, the browser's entry is dropped.
+    /// </summary>
+    public async Task TransferAsync(string fromShopper, string toShopper, CancellationToken cancellationToken = default)
+    {
+        var moving = await entries.Find(e => e.EntrantId == fromShopper).ToListAsync(cancellationToken);
+
+        foreach (var entry in moving)
+        {
+            var isWinner = Builders<Drop>.Filter.And(
+                Builders<Drop>.Filter.Eq(d => d.Id, entry.DropId),
+                Builders<Drop>.Filter.AnyEq(d => d.Winners, fromShopper));
+
+            try
+            {
+                await entries.UpdateOneAsync(
+                    e => e.Id == entry.Id,
+                    Builders<DropEntry>.Update.Set(e => e.EntrantId, toShopper),
+                    cancellationToken: cancellationToken);
+
+                await drops.UpdateOneAsync(
+                    isWinner,
+                    Builders<Drop>.Update.Set("Winners.$", toShopper),
+                    cancellationToken: cancellationToken);
+            }
+            catch (MongoWriteException e) when (e.WriteError.Category == ServerErrorCategory.DuplicateKey)
+            {
+                await entries.DeleteOneAsync(x => x.Id == entry.Id, cancellationToken);
+                await drops.UpdateOneAsync(
+                    isWinner,
+                    Builders<Drop>.Update.Pull(d => d.Winners, fromShopper),
+                    cancellationToken: cancellationToken);
+            }
+        }
+    }
 }

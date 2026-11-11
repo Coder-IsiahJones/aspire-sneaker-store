@@ -75,15 +75,23 @@ image in April 2027, so this workaround will need to be revisited.
 
 ## Redis
 
-Each browser's bag is a Redis hash at `bag:{id}`, using the same `localStorage` ID as raffle entries. The hash stores only sneaker IDs, sizes and quantities, so names and prices always come from MongoDB. A bag expires 30 days after its last add. The Redis data volume keeps bags across restarts.
+Each browser's bag is a Redis hash at `bag:{id}`, keyed by the signed-in account or, for anyone signed out, the same `localStorage` ID as raffle entries. The hash stores only sneaker IDs, sizes and quantities, so names and prices always come from MongoDB. A bag expires 30 days after its last add. The Redis data volume keeps bags across restarts.
 
 `GET /api/sneakers`, `GET /api/sneakers/{id}` and `GET /api/brands` are cached in Redis for 60 seconds with ASP.NET output caching. A cache hit has an `Age` response header. The cache is cleared when the API starts, and drops and bags are never cached.
+
+## Accounts
+
+Shoppers can sign up with an email and password. Passwords are hashed with ASP.NET's `PasswordHasher`, and sessions use an HttpOnly, SameSite=Strict cookie that lasts 14 days. Register and sign-in are limited to 10 attempts per minute per IP address, which you can change with `Auth:AttemptsPerMinute`.
+
+Signing in moves the browser's bag and raffle entries, including wins, to the account. An account's bag, saved shoes and orders then follow it to any device. Signing out leaves none of that on the device.
+
+Checkout needs an account and turns the bag into an order. It's a demo, so it takes no payment or shipping address and doesn't reduce stock. There is no email verification or password reset.
 
 ## Drops
 
 The loading dock at the top of the store runs raffles for limited pairs that aren't in the regular catalog. A drop counts down to opening, takes entries until it closes, then draws winners at random. The draw runs the first time the drop is read after closing, and the first result written is permanent. The API only lets a winner add their pair to the bag, in the size they entered, one at a time.
 
-There are no accounts, so an entrant is a random ID kept in the browser's `localStorage`. The database allows one entry per ID per drop, but clearing storage or switching browsers gets a new ID. A real store would tie entries to verified accounts.
+A signed-in shopper gets one entry per drop across all their devices. Anyone signed out is a random ID kept in the browser's `localStorage`, so clearing storage or switching browsers gets a new ID.
 
 The seed schedule is relative to when it was created: one drop is live for 10 minutes, one opens 2 minutes in, and one opens in 2 days. The live drop includes placeholder entries, so it can be lost as well as won. When the API starts and no drop is live, it deletes all drops and entries and creates a fresh schedule.
 
@@ -97,6 +105,15 @@ The seed schedule is relative to when it was created: one drop is live for 10 mi
 | `GET /api/bag` | The bag for the `X-Entrant-Id` header |
 | `POST /api/bag/items` | Add `{ "sneakerId": "...", "size": 9.5 }` to the bag and return it. Returns 403 for a limited pair the caller didn't win. |
 | `DELETE /api/bag/items/{key}` | Remove a line and return the bag |
+| `GET /api/account` | The signed-in account, or `{ "account": null }` |
+| `POST /api/account/register` | Create an account from `{ "email": "...", "password": "..." }` and sign in |
+| `POST /api/account/sign-in` | Sign in with `{ "email": "...", "password": "..." }` |
+| `POST /api/account/sign-out` | Sign out |
+| `GET /api/wishlist` | Saved sneakers, newest first. Requires sign-in. |
+| `PUT /api/wishlist/{sneakerId}` | Save a sneaker. Requires sign-in. |
+| `DELETE /api/wishlist/{sneakerId}` | Remove a saved sneaker. Requires sign-in. |
+| `GET /api/orders` | The account's orders, newest first. Requires sign-in. |
+| `POST /api/orders` | Turn the bag into an order. Requires sign-in. Returns 409 if the bag is empty. |
 | `GET /api/drops` | Raffle drops and the server's clock. Send `X-Entrant-Id` to include that entrant's entry and result. |
 | `POST /api/drops/{id}/entries` | Enter a drop's raffle with `{ "size": 9.5 }` and an `X-Entrant-Id` header. Returns 409 if the drop isn't open or that entrant already entered. |
 | `GET /health` | Health checks, including MongoDB (Development only) |

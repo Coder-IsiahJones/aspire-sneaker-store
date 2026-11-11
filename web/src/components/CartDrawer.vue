@@ -1,10 +1,34 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useAccount } from '../composables/useAccount'
 import { formatPrice, useCart } from '../composables/useCart'
 
 const open = defineModel<boolean>({ required: true })
 const { lines, count, total, remove } = useCart()
 const removeFailed = ref(false)
+
+const { account, panelOpen, checkout } = useAccount()
+const placing = ref(false)
+const checkoutFailed = ref(false)
+
+async function placeOrder() {
+  if (!account.value) {
+    open.value = false
+    panelOpen.value = true
+    return
+  }
+  if (placing.value) return
+  placing.value = true
+  checkoutFailed.value = false
+  const placed = await checkout()
+  placing.value = false
+  if (placed) {
+    open.value = false
+    panelOpen.value = true
+  } else {
+    checkoutFailed.value = true
+  }
+}
 
 async function removeLine(key: string) {
   removeFailed.value = !(await remove(key))
@@ -55,7 +79,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </div>
 
         <p v-if="removeFailed" class="note note-error" role="alert">Couldn't remove that. Try again.</p>
-        <p class="note">Demo store. Checkout is not wired up.</p>
+        <button v-if="lines.length > 0" type="button" class="checkout" :disabled="placing" @click="placeOrder">
+          {{ placing ? 'Printing receipt...' : account ? 'Place order' : 'Sign in to check out' }}
+        </button>
+        <p v-if="checkoutFailed" class="note note-error" role="alert">Couldn't place that order. Try again.</p>
+        <p class="note">Demo store. No payment is taken.</p>
       </div>
     </aside>
   </Transition>
@@ -196,6 +224,30 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   text-align: center;
   font-size: 11px;
   color: var(--muted);
+}
+
+.checkout {
+  width: 100%;
+  margin-top: 18px;
+  padding: 12px;
+  border: 2px solid var(--ink);
+  background: var(--ink);
+  color: var(--label);
+  font: 600 13px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.checkout:hover:not(:disabled) {
+  background: var(--hot);
+  color: var(--ink);
+}
+
+.checkout:disabled {
+  cursor: progress;
+  opacity: 0.7;
 }
 
 .note-error {

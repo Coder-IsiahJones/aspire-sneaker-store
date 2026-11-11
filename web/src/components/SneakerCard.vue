@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Sneaker } from '../api'
+import { useAccount } from '../composables/useAccount'
 import { formatPrice, useCart } from '../composables/useCart'
 import ShoeArt from './ShoeArt.vue'
 
@@ -11,6 +12,18 @@ const size = ref<number>()
 const justAdded = ref(false)
 const adding = ref(false)
 const addFailed = ref(false)
+
+const { isSaved, toggleWishlist } = useAccount()
+const saved = computed(() => isSaved(props.sneaker.id))
+const saving = ref(false)
+const saveFailed = ref(false)
+
+async function toggleSave() {
+  if (saving.value) return
+  saving.value = true
+  saveFailed.value = !(await toggleWishlist(props.sneaker))
+  saving.value = false
+}
 
 // A fake barcode generated from the SKU, so every box label looks different.
 const barcode = computed(() => {
@@ -51,6 +64,16 @@ async function addToCart() {
   <article class="card" :style="{ '--i': index }">
     <div class="shelf">
       <span class="year">{{ sneaker.releaseYear }}</span>
+      <button
+        type="button"
+        class="save"
+        :aria-pressed="saved"
+        :aria-label="`Save ${sneaker.name}`"
+        :disabled="saving"
+        @click="toggleSave"
+      >
+        {{ saveFailed ? 'Retry' : saved ? '★ Saved' : '☆ Save' }}
+      </button>
       <ShoeArt :colors="sneaker.colors" />
     </div>
 
@@ -145,6 +168,28 @@ async function addToCart() {
   font: 600 11px/1 var(--mono);
   letter-spacing: 0.12em;
   color: var(--kraft-dark);
+}
+
+.save {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  right: 8px;
+  padding: 5px 8px 4px;
+  border: 1.5px solid var(--ink);
+  background: var(--label);
+  color: var(--ink);
+  font: 600 11px/1 var(--mono);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.save:hover {
+  background: var(--paper);
+}
+
+.save[aria-pressed='true'] {
+  background: var(--hot);
 }
 
 .label {

@@ -13,7 +13,11 @@ public enum BagAddResult
     InvalidSize,
     NotWinner,
     AlreadyInBag,
+    AlreadyOrdered,
 }
+
+/// <summary>A bag moved aside under a temporary key, so nothing else can touch it.</summary>
+public sealed record TakenBag(string Key, List<BagLine> Lines);
 
 /// <summary>
 /// Keeps each shopper's bag in a Redis hash of "sneakerId:size" to quantity. Only ids are
@@ -36,9 +40,10 @@ public sealed class BagStore(
     private static string Field(string sneakerId, double size) =>
         $"{sneakerId}:{size.ToString(CultureInfo.InvariantCulture)}";
 
-    public async Task<List<BagLine>> GetAsync(string shopperId)
+    public Task<List<BagLine>> GetAsync(string shopperId) => ReadAsync(KeyFor(shopperId));
+
+    private async Task<List<BagLine>> ReadAsync(RedisKey key)
     {
-        var key = KeyFor(shopperId);
         var stored = await Db.HashGetAllAsync(key);
         if (stored.Length == 0)
         {
@@ -100,7 +105,18 @@ public sealed class BagStore(
                 return BagAddResult.NotFound;
             }
 
-            if (!await WonAsync(drop, shopperId, size))
+            if (drop.PhaseAt(DateTime.UtcNow) != DropPhase.Closed)
+            {
+                return BagAddResult.NotWinner;
+            }
+
+            var drawn = await raffle.DrawAsync(drop);
+            if (drawn.Claimed.Contains(shopperId))
+            {
+                return BagAddResult.AlreadyOrdered;
+            }
+
+            if (!await WonAsync(drawn, shopperId, size))
             {
                 return BagAddResult.NotWinner;
             }
@@ -119,20 +135,81 @@ public sealed class BagStore(
     public Task RemoveAsync(string shopperId, string lineKey) =>
         Db.HashDeleteAsync(KeyFor(shopperId), lineKey);
 
-    private async Task<bool> WonAsync(Drop drop, string shopperId, double size)
+    /// <summary>
+    /// Atomically moves the shopper's bag out of reach, so only one caller can ever act on it.
+    /// Returns null if there is no bag. Renaming keeps the expiry, so a crash can't leak it.
+    /// </summary>
+    public async Task<TakenBag?> TakeAsync(string shopperId)
     {
-        if (drop.PhaseAt(DateTime.UtcNow) != DropPhase.Closed)
+        var temporary = $"bag:taken:{Guid.NewGuid():N}";
+        try
         {
-            return false;
+            await Db.KeyRenameAsync(KeyFor(shopperId), temporary);
+        }
+        catch (RedisServerException e) when (e.Message.Contains("no such key", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
         }
 
-        var drawn = await raffle.DrawAsync(drop);
+        return new TakenBag(temporary, await ReadAsync(temporary));
+    }
+
+    public Task DiscardAsync(TakenBag taken) => Db.KeyDeleteAsync(taken.Key);
+
+    /// <summary>Puts a taken bag back after a failure, keeping anything added meanwhile.</summary>
+    public async Task RestoreAsync(TakenBag taken, string shopperId)
+    {
+        var key = KeyFor(shopperId);
+        foreach (var line in taken.Lines)
+        {
+            await Db.HashIncrementAsync(key, line.Key, line.Quantity);
+        }
+
+        await Db.KeyExpireAsync(key, Lifetime);
+        await DiscardAsync(taken);
+    }
+
+    /// <summary>Moves one shopper's bag into another's, adding quantities together.</summary>
+    public async Task MergeAsync(string fromShopper, string toShopper)
+    {
+        var taken = await TakeAsync(fromShopper);
+        if (taken is null)
+        {
+            return;
+        }
+
+        var ids = taken.Lines.Select(l => l.Sneaker.Id!).Distinct().ToList();
+        var catalogIds = (await sneakers.Find(Builders<Sneaker>.Filter.In(s => s.Id, ids))
+            .Project(s => s.Id)
+            .ToListAsync()).ToHashSet();
+
+        var key = KeyFor(toShopper);
+        foreach (var line in taken.Lines)
+        {
+            if (catalogIds.Contains(line.Sneaker.Id))
+            {
+                await Db.HashIncrementAsync(key, line.Key, line.Quantity);
+            }
+            else
+            {
+                // A limited pair goes through the normal checks, which refuse it if the
+                // account didn't win it or has already ordered it.
+                await AddAsync(toShopper, line.Sneaker.Id!, line.Size);
+            }
+        }
+
+        await Db.KeyExpireAsync(key, Lifetime);
+        await DiscardAsync(taken);
+    }
+
+    private async Task<bool> WonAsync(Drop drawn, string shopperId, double size)
+    {
         if (drawn.Winners?.Contains(shopperId) != true)
         {
             return false;
         }
 
-        var entry = await entries.Find(e => e.DropId == drop.Id && e.EntrantId == shopperId).FirstOrDefaultAsync();
+        var entry = await entries.Find(e => e.DropId == drawn.Id && e.EntrantId == shopperId).FirstOrDefaultAsync();
         return entry?.Size == size;
     }
 
