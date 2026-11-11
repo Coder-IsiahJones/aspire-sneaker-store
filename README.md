@@ -11,7 +11,7 @@ A small demo store with three parts, all started by one `aspire run`:
 ## Prerequisites
 
 - [.NET 11 SDK](https://dotnet.microsoft.com/download) (pinned in `global.json`)
-- [Aspire CLI](https://aspire.dev/get-started/install-cli/) 13.6 or newer
+- [Aspire CLI](https://aspire.dev/get-started/install-cli/) 17.1 from the daily channel. Aspire 17 isn't on nuget.org yet, so the repo pins a 17.1 preview build and `nuget.config` adds the feed it comes from. If you already have the CLI, switch it with `aspire update --self --channel daily`.
 - Docker (Docker Desktop, or Docker Engine on Linux)
 - Node.js 24 (`nvm use` picks it up from `.nvmrc`)
 

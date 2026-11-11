@@ -1,8 +1,8 @@
-#:package Aspire.Hosting.JavaScript@13.6.5
-#:package Aspire.Hosting.MongoDB@13.6.5
-#:sdk Aspire.AppHost.Sdk@13.6.5
+#:package Aspire.Hosting.AppHost@17.1.0-preview.1.26560.7
+#:package Aspire.Hosting.Dotnet@17.1.0-preview.1.26560.7
+#:package Aspire.Hosting.JavaScript@17.1.0-preview.1.26560.7
+#:package Aspire.Hosting.MongoDB@17.1.0-preview.1.26560.7
 #:property AspireUseCliBundle=true
-#:project ./SneakerStore.Api/SneakerStore.Api.csproj
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -11,7 +11,7 @@ var mongo = builder.AddMongoDB("mongo")
 
 var sneakerDb = mongo.AddDatabase("sneakerdb");
 
-var api = builder.AddProject<Projects.SneakerStore_Api>("api")
+var api = builder.AddDotnetProject("api", "./SneakerStore.Api/SneakerStore.Api.csproj")
     .WithReference(sneakerDb)
     .WaitFor(sneakerDb)
     .WithHttpHealthCheck("/health");
