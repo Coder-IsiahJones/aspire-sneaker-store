@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import { getBrands, getSneakers, type Sneaker } from './api'
 import BrandFilter from './components/BrandFilter.vue'
 import CartDrawer from './components/CartDrawer.vue'
+import DropsDock from './components/DropsDock.vue'
 import SneakerCard from './components/SneakerCard.vue'
 import { useCart } from './composables/useCart'
 
@@ -50,6 +51,8 @@ watch(brand, load)
         Bag <span class="cart-count">{{ count }}</span>
       </button>
     </header>
+
+    <DropsDock />
 
     <BrandFilter v-model="brand" :brands="brands" />
 

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using SneakerStore.Api.Data;
@@ -16,6 +17,13 @@ builder.Services.AddSingleton(sp =>
     
 builder.Services.AddSingleton<SneakerSeeder>();
 
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IMongoDatabase>().GetCollection<Drop>("drops"));
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IMongoDatabase>().GetCollection<DropEntry>("dropEntries"));
+builder.Services.AddSingleton<DropSeeder>();
+builder.Services.AddSingleton<DropRaffle>();
+
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -33,6 +41,7 @@ if (app.Environment.IsDevelopment())
 }
 
 await app.Services.GetRequiredService<SneakerSeeder>().SeedAsync();
+await app.Services.GetRequiredService<DropSeeder>().SeedAsync();
 
 var api = app.MapGroup("/api").WithTags("Sneakers");
 
@@ -81,4 +90,121 @@ api.MapGet("/brands", async (IMongoCollection<Sneaker> sneakers) =>
 .WithSummary("List distinct brand names")
 .Produces<IEnumerable<string>>();
 
+var dropsApi = app.MapGroup("/api").WithTags("Drops");
+
+dropsApi.MapGet("/drops", async (
+    [FromHeader(Name = "X-Entrant-Id")] string? entrantHeader,
+    IMongoCollection<Drop> drops,
+    IMongoCollection<DropEntry> entries,
+    DropRaffle raffle) =>
+{
+    var now = DateTime.UtcNow;
+    var stored = await drops.Find(FilterDefinition<Drop>.Empty).ToListAsync();
+
+    var current = new List<Drop>(stored.Count);
+    foreach (var drop in stored)
+    {
+        current.Add(drop.PhaseAt(now) == DropPhase.Closed ? await raffle.DrawAsync(drop) : drop);
+    }
+
+    var counts = (await entries.Aggregate()
+            .Group(e => e.DropId, g => new { DropId = g.Key, Count = g.Count() })
+            .ToListAsync())
+        .ToDictionary(c => c.DropId, c => c.Count);
+
+    var mine = TryNormalizeEntrant(entrantHeader, out var entrantId)
+        ? (await entries.Find(e => e.EntrantId == entrantId).ToListAsync()).ToDictionary(e => e.DropId)
+        : [];
+
+    var response = current
+        .OrderBy(d => d.PhaseAt(now) switch
+        {
+            DropPhase.Open => 0,
+            DropPhase.Upcoming => 1,
+            _ => 2,
+        })
+        .ThenBy(d => d.ClosesAt)
+        .Select(d => new DropResponse(
+            d.Id!,
+            d.Sneaker,
+            d.Pairs,
+            d.OpensAt,
+            d.ClosesAt,
+            d.PhaseAt(now),
+            counts.GetValueOrDefault(d.Id!),
+            mine.GetValueOrDefault(d.Id!)?.StatusIn(d)))
+        .ToList();
+
+    return new DropsResponse(now, response);
+})
+.WithName("ListDrops")
+.WithSummary("List raffle drops, with the caller's entry if X-Entrant-Id is sent")
+.Produces<DropsResponse>();
+
+dropsApi.MapPost("/drops/{id}/entries", async (
+    string id,
+    EnterDropRequest request,
+    [FromHeader(Name = "X-Entrant-Id")] string? entrantHeader,
+    IMongoCollection<Drop> drops,
+    IMongoCollection<DropEntry> entries) =>
+{
+    if (!ObjectId.TryParse(id, out _))
+    {
+        return Results.NotFound();
+    }
+
+    var drop = await drops.Find(d => d.Id == id).FirstOrDefaultAsync();
+    if (drop is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!TryNormalizeEntrant(entrantHeader, out var entrantId))
+    {
+        return Results.Problem("X-Entrant-Id must be a GUID.", statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (!drop.Sneaker.Sizes.Contains(request.Size))
+    {
+        return Results.Problem("That size isn't part of this drop.", statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    var now = DateTime.UtcNow;
+    if (drop.PhaseAt(now) != DropPhase.Open)
+    {
+        return Results.Problem("This drop isn't taking entries.", statusCode: StatusCodes.Status409Conflict);
+    }
+
+    var entry = new DropEntry { DropId = id, EntrantId = entrantId, Size = request.Size, EnteredAt = now };
+    try
+    {
+        await entries.InsertOneAsync(entry);
+    }
+    catch (MongoWriteException e) when (e.WriteError.Category == ServerErrorCategory.DuplicateKey)
+    {
+        return Results.Problem("Already entered.", statusCode: StatusCodes.Status409Conflict);
+    }
+
+    return Results.Created($"/api/drops/{id}/entries", entry.StatusIn(drop));
+})
+.WithName("EnterDrop")
+.WithSummary("Enter a drop's raffle, once per X-Entrant-Id")
+.Produces<DropEntryStatus>(StatusCodes.Status201Created)
+.ProducesProblem(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status404NotFound)
+.ProducesProblem(StatusCodes.Status409Conflict);
+
 app.Run();
+
+// Normalized so the same GUID written two ways can't count as two entrants.
+static bool TryNormalizeEntrant(string? header, out string entrantId)
+{
+    if (Guid.TryParse(header, out var guid) && guid != Guid.Empty)
+    {
+        entrantId = guid.ToString("N");
+        return true;
+    }
+
+    entrantId = "";
+    return false;
+}

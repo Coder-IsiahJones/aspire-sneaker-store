@@ -71,6 +71,14 @@ image in April 2027, so this workaround will need to be revisited.
 | API to MongoDB | `WithReference(sneakerDb)` in the AppHost gives the API a `ConnectionStrings__sneakerdb` variable. `builder.AddMongoDBClient("sneakerdb")` reads it. |
 | Vite to API | `WithReference(api)` gives the Vite process an `API_HTTP` variable. `vite.config.ts` proxies `/api` to it. |
 
+## Drops
+
+The loading dock at the top of the store runs raffles for limited pairs that aren't in the regular catalog. A drop counts down to opening, takes entries until it closes, then draws winners at random. The draw runs the first time the drop is read after closing, and the first result written is permanent. Winners can add their pair to the bag.
+
+There are no accounts, so an entrant is a random ID kept in the browser's `localStorage`. The database allows one entry per ID per drop, but clearing storage or switching browsers gets a new ID. A real store would tie entries to verified accounts.
+
+The seed schedule is relative to when it was created: one drop is live for 10 minutes, one opens 2 minutes in, and one opens in 2 days. The live drop includes placeholder entries, so it can be lost as well as won. When the API starts and no drop is live, it deletes all drops and entries and creates a fresh schedule.
+
 ## API
 
 | Route | Returns |
@@ -78,6 +86,8 @@ image in April 2027, so this workaround will need to be revisited.
 | `GET /api/sneakers?brand=Nike` | Sneakers, optionally filtered by brand |
 | `GET /api/sneakers/{id}` | One sneaker |
 | `GET /api/brands` | Distinct brand names |
+| `GET /api/drops` | Raffle drops and the server's clock. Send `X-Entrant-Id` to include that entrant's entry and result. |
+| `POST /api/drops/{id}/entries` | Enter a drop's raffle with `{ "size": 9.5 }` and an `X-Entrant-Id` header. Returns 409 if the drop isn't open or that entrant already entered. |
 | `GET /health` | Health checks, including MongoDB (Development only) |
 | `GET /swagger` | Swagger UI (Development only). The dashboard links to it from the `api` resource. |
 | `GET /openapi/v1.json` | OpenAPI document (Development only) |

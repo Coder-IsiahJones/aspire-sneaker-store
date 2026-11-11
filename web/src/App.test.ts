@@ -1,13 +1,16 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
-import { getBrands, getSneakers } from './api'
+import { getBrands, getDrops, getSneakers } from './api'
 import { useCart } from './composables/useCart'
+import { makeDrop } from './test/drop'
 import { makeSneaker } from './test/sneaker'
 
 vi.mock('./api', () => ({
   getSneakers: vi.fn(),
   getBrands: vi.fn(),
+  getDrops: vi.fn(),
+  enterDrop: vi.fn(),
 }))
 
 const dunk = makeSneaker({ name: 'Dunk Low', brand: 'Nike' })
@@ -17,6 +20,7 @@ beforeEach(() => {
   useCart().lines.splice(0)
   vi.mocked(getSneakers).mockResolvedValue([samba, dunk])
   vi.mocked(getBrands).mockResolvedValue(['adidas', 'Nike'])
+  vi.mocked(getDrops).mockResolvedValue({ serverTime: new Date().toISOString(), drops: [] })
 })
 
 const cardNames = (wrapper: ReturnType<typeof mount>) =>
@@ -75,6 +79,31 @@ describe('App', () => {
 
     expect(cardNames(wrapper)).toEqual(['Samba OG', 'Dunk Low'])
     expect(wrapper.findAll('nav button').map((button) => button.text())).toEqual(['All pairs'])
+  })
+
+  it('shows the loading dock when there are drops', async () => {
+    vi.mocked(getDrops).mockResolvedValue({
+      serverTime: new Date().toISOString(),
+      drops: [makeDrop()],
+    })
+
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.get('.dock-title').text()).toBe('Loading dock')
+    expect(wrapper.findAll('.ticket')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('hides the loading dock and keeps the catalog when drops fail', async () => {
+    vi.mocked(getDrops).mockRejectedValue(new Error('boom'))
+
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.find('.dock').exists()).toBe(false)
+    expect(cardNames(wrapper)).toEqual(['Samba OG', 'Dunk Low'])
+    wrapper.unmount()
   })
 
   it('counts pairs in the bag and opens the cart', async () => {

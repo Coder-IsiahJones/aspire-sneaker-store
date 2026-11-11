@@ -1,9 +1,73 @@
+using MongoDB.Bson;
 using SneakerStore.Api.Models;
 
 namespace SneakerStore.Api.Data;
 
 public static class SeedData
 {
+    // A schedule that shows every stage within a few minutes of starting the app. DemoEntrants
+    // are placeholder entries, so the first raffle can be lost as well as won.
+    public static List<(Drop Drop, int DemoEntrants)> Drops(DateTime now) =>
+    [
+        (new Drop
+        {
+            Sneaker = new()
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                Sku = "DRP-AJ3-BCM",
+                Name = "Air Jordan 3 Retro",
+                Brand = "Jordan",
+                Colorway = "Black Cement",
+                Price = 220m,
+                ReleaseYear = 2018,
+                Sizes = [8, 9, 9.5, 10, 11],
+                Colors = ["#1F1F1F", "#8C8C8C", "#C8102E"],
+                Description = "Black tumbled leather with elephant print wrapped around the toe and heel.",
+            },
+            Pairs = 3,
+            OpensAt = now.AddMinutes(-1),
+            ClosesAt = now.AddMinutes(10),
+        }, 6),
+        (new Drop
+        {
+            Sneaker = new()
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                Sku = "DRP-AM90-INF",
+                Name = "Air Max 90",
+                Brand = "Nike",
+                Colorway = "Infrared",
+                Price = 150m,
+                ReleaseYear = 2020,
+                Sizes = [7, 8, 9, 10, 11, 12],
+                Colors = ["#F2F2F2", "#FF3B4A", "#D9D9D9"],
+                Description = "Grey suede and white mesh with the hottest red in the archive on the mudguard.",
+            },
+            Pairs = 2,
+            OpensAt = now.AddMinutes(2),
+            ClosesAt = now.AddMinutes(12),
+        }, 0),
+        (new Drop
+        {
+            Sneaker = new()
+            {
+                Id = ObjectId.GenerateNewId().ToString(),
+                Sku = "DRP-NB992-GRY",
+                Name = "992",
+                Brand = "New Balance",
+                Colorway = "Grey",
+                Price = 200m,
+                ReleaseYear = 2020,
+                Sizes = [8, 9, 10, 10.5, 11, 13],
+                Colors = ["#A8A8A8", "#6E6E6E", "#EDEDED"],
+                Description = "Pigskin suede and mesh in the tone that made the whole line famous.",
+            },
+            Pairs = 5,
+            OpensAt = now.AddDays(2),
+            ClosesAt = now.AddDays(3),
+        }, 0),
+    ];
+
     // Returns fresh instances each call because InsertMany writes the generated Id back onto them.
     public static List<Sneaker> Sneakers() =>
     [

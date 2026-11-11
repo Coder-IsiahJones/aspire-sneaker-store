@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getBrands, getSneakers } from './api'
+import { enterDrop, getBrands, getDrops, getSneakers } from './api'
 import { makeSneaker } from './test/sneaker'
 
 function stubFetch(response: Response) {
@@ -57,5 +57,36 @@ describe('getBrands', () => {
     stubFetch(new Response(null, { status: 404, statusText: 'Not Found' }))
 
     await expect(getBrands()).rejects.toThrow('404 Not Found from /api/brands')
+  })
+})
+
+describe('getDrops', () => {
+  it('sends the entrant id as a header, not in the URL', async () => {
+    const body = { serverTime: '2026-06-01T12:00:00Z', drops: [] }
+    const fetch = stubFetch(json(body))
+
+    await expect(getDrops('abc123')).resolves.toEqual(body)
+    expect(fetch).toHaveBeenCalledWith('/api/drops', { headers: { 'X-Entrant-Id': 'abc123' } })
+  })
+})
+
+describe('enterDrop', () => {
+  it('posts the size for the entrant', async () => {
+    const fetch = stubFetch(json({ size: 9.5, result: 'pending' }))
+
+    await expect(enterDrop('drop1', 'abc123', 9.5)).resolves.toEqual({ size: 9.5, result: 'pending' })
+    expect(fetch).toHaveBeenCalledWith('/api/drops/drop1/entries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Entrant-Id': 'abc123' },
+      body: JSON.stringify({ size: 9.5 }),
+    })
+  })
+
+  it('throws when the drop refuses the entry', async () => {
+    stubFetch(new Response(null, { status: 409, statusText: 'Conflict' }))
+
+    await expect(enterDrop('drop1', 'abc123', 9)).rejects.toThrow(
+      '409 Conflict from /api/drops/drop1/entries',
+    )
   })
 })
