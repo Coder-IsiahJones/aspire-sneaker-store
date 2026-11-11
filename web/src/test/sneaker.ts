@@ -2,10 +2,13 @@ import type { Sneaker } from '../api'
 
 let nextId = 1
 
+/** Every sneaker made in this test file, so the fake bag can look them up by id. */
+export const knownSneakers = new Map<string, Sneaker>()
+
 /** A sneaker with sensible defaults. Pass only the fields a test cares about. */
 export function makeSneaker(overrides: Partial<Sneaker> = {}): Sneaker {
   const id = String(nextId++).padStart(24, '0')
-  return {
+  const sneaker = {
     id,
     sku: `TST-${id.slice(-4)}`,
     name: 'Test Runner',
@@ -18,4 +21,6 @@ export function makeSneaker(overrides: Partial<Sneaker> = {}): Sneaker {
     description: 'A shoe that only exists in tests.',
     ...overrides,
   }
+  knownSneakers.set(sneaker.id, sneaker)
+  return sneaker
 }

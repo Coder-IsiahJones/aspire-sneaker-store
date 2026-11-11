@@ -14,7 +14,7 @@ const loading = ref(true)
 const error = ref<string>()
 const cartOpen = ref(false)
 
-const { count } = useCart()
+const { count, load: loadBag } = useCart()
 
 async function load() {
   loading.value = true
@@ -29,6 +29,7 @@ async function load() {
 }
 
 onMounted(async () => {
+  void loadBag()
   await load()
   brands.value = await getBrands().catch(() => [])
 })

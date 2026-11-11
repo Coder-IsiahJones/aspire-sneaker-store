@@ -10,6 +10,8 @@ const emit = defineEmits<{ enter: [size: number] }>()
 
 const cart = useCart()
 const size = ref<number>()
+const claiming = ref(false)
+const claimFailed = ref(false)
 
 const result = computed(() => props.drop.entry?.result)
 const won = computed(() => props.drop.phase === 'closed' && result.value === 'won')
@@ -61,8 +63,11 @@ function submit() {
   if (size.value !== undefined) emit('enter', size.value)
 }
 
-function claim() {
-  if (props.drop.entry) cart.add(props.drop.sneaker, props.drop.entry.size)
+async function claim() {
+  if (!props.drop.entry || claiming.value) return
+  claiming.value = true
+  claimFailed.value = !(await cart.add(props.drop.sneaker, props.drop.entry.size))
+  claiming.value = false
 }
 </script>
 
@@ -130,9 +135,10 @@ function claim() {
 
         <template v-else-if="won">
           <p class="note" role="status"><strong>You won a pair, size {{ drop.entry?.size }}.</strong></p>
-          <button type="button" class="go go-hot" :disabled="inBag" @click="claim">
+          <button type="button" class="go go-hot" :disabled="inBag || claiming" @click="claim">
             {{ inBag ? 'In the bag' : `Bag it for ${formatPrice(drop.sneaker.price)}` }}
           </button>
+          <p v-if="claimFailed" class="note note-error" role="alert">That didn't go through. Try again.</p>
         </template>
 
         <p v-else-if="lost" class="note" role="status">

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { enterDrop, getBrands, getDrops, getSneakers } from './api'
+import { addToBag, enterDrop, getBag, getBrands, getDrops, getSneakers, removeFromBag } from './api'
 import { makeSneaker } from './test/sneaker'
 
 function stubFetch(response: Response) {
@@ -57,6 +57,44 @@ describe('getBrands', () => {
     stubFetch(new Response(null, { status: 404, statusText: 'Not Found' }))
 
     await expect(getBrands()).rejects.toThrow('404 Not Found from /api/brands')
+  })
+})
+
+describe('bag', () => {
+  it('reads the bag with the entrant header', async () => {
+    const fetch = stubFetch(json([]))
+
+    await expect(getBag('abc123')).resolves.toEqual([])
+    expect(fetch).toHaveBeenCalledWith('/api/bag', { headers: { 'X-Entrant-Id': 'abc123' } })
+  })
+
+  it('posts the sneaker and size', async () => {
+    const fetch = stubFetch(json([]))
+
+    await addToBag('abc123', 'shoe1', 9.5)
+
+    expect(fetch).toHaveBeenCalledWith('/api/bag/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Entrant-Id': 'abc123' },
+      body: JSON.stringify({ sneakerId: 'shoe1', size: 9.5 }),
+    })
+  })
+
+  it('URL-encodes the line key when removing', async () => {
+    const fetch = stubFetch(json([]))
+
+    await removeFromBag('abc123', 'shoe1:9.5')
+
+    expect(fetch).toHaveBeenCalledWith('/api/bag/items/shoe1%3A9.5', {
+      method: 'DELETE',
+      headers: { 'X-Entrant-Id': 'abc123' },
+    })
+  })
+
+  it('throws when the API refuses', async () => {
+    stubFetch(new Response(null, { status: 403, statusText: 'Forbidden' }))
+
+    await expect(addToBag('abc123', 'shoe1', 9)).rejects.toThrow('403 Forbidden from /api/bag/items')
   })
 })
 

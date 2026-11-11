@@ -1,12 +1,14 @@
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { removeFromBag } from '../api'
 import { useCart } from '../composables/useCart'
+import { resetFakeBag } from '../test/fakeBag'
 import { makeSneaker } from '../test/sneaker'
 import CartDrawer from './CartDrawer.vue'
 
-beforeEach(() => {
-  useCart().lines.splice(0)
-})
+vi.mock('../api', async () => (await import('../test/fakeBag')).fakeBagApi)
+
+beforeEach(() => resetFakeBag(useCart()))
 
 let wrapper: VueWrapper | undefined
 
@@ -38,11 +40,11 @@ describe('CartDrawer', () => {
     expect(drawer.get('.total').text()).toContain('$0')
   })
 
-  it('lists each line with its size, quantity and subtotal', () => {
+  it('lists each line with its size, quantity and subtotal', async () => {
     const { add } = useCart()
     const dunk = makeSneaker({ name: 'Dunk Low', colorway: 'Panda', price: 115 })
-    add(dunk, 10)
-    add(dunk, 10)
+    await add(dunk, 10)
+    await add(dunk, 10)
 
     const drawer = mountDrawer()
     const line = drawer.get('.line')
@@ -53,22 +55,35 @@ describe('CartDrawer', () => {
     expect(drawer.get('.total').text()).toContain('$230')
   })
 
-  it('uses the singular for one pair', () => {
-    useCart().add(makeSneaker(), 9)
+  it('uses the singular for one pair', async () => {
+    await useCart().add(makeSneaker(), 9)
 
     expect(mountDrawer().get('.meta').text()).toBe('1 pair')
   })
 
   it('removes a line when its remove button is clicked', async () => {
     const { add, lines } = useCart()
-    add(makeSneaker({ name: 'Keep me' }), 9)
-    add(makeSneaker({ name: 'Drop me' }), 9)
+    await add(makeSneaker({ name: 'Keep me' }), 9)
+    await add(makeSneaker({ name: 'Drop me' }), 9)
     const drawer = mountDrawer()
 
     await drawer.findAll('.line')[1]!.get('button.remove').trigger('click')
+    await flushPromises()
 
     expect(lines.map((line) => line.sneaker.name)).toEqual(['Keep me'])
     expect(drawer.findAll('.line')).toHaveLength(1)
+  })
+
+  it('says so when a remove fails', async () => {
+    await useCart().add(makeSneaker(), 9)
+    vi.mocked(removeFromBag).mockRejectedValueOnce(new Error('503'))
+    const drawer = mountDrawer()
+
+    await drawer.get('button.remove').trigger('click')
+    await flushPromises()
+
+    expect(drawer.findAll('.line')).toHaveLength(1)
+    expect(drawer.get('[role="alert"]').text()).toContain("Couldn't remove")
   })
 
   it.each([

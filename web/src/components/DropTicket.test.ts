@@ -1,9 +1,12 @@
-import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it } from 'vitest'
-import type { Drop } from '../api'
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { addToBag, type Drop } from '../api'
 import { useCart } from '../composables/useCart'
 import { inMinutes, makeDrop, NOW } from '../test/drop'
+import { resetFakeBag } from '../test/fakeBag'
 import DropTicket from './DropTicket.vue'
+
+vi.mock('../api', async () => (await import('../test/fakeBag')).fakeBagApi)
 
 function mountTicket(drop: Drop, props: { entering?: boolean; failed?: boolean } = {}) {
   return mount(DropTicket, {
@@ -11,9 +14,7 @@ function mountTicket(drop: Drop, props: { entering?: boolean; failed?: boolean }
   })
 }
 
-beforeEach(() => {
-  useCart().lines.splice(0)
-})
+beforeEach(() => resetFakeBag(useCart()))
 
 describe('DropTicket', () => {
   it('counts down to opening and offers no entry while upcoming', () => {
@@ -88,12 +89,33 @@ describe('DropTicket', () => {
     expect(wrapper.get('.stamp').text()).toBe('Winner')
 
     await wrapper.get('button.go').trigger('click')
+    await flushPromises()
 
     const { lines } = useCart()
     expect(lines).toHaveLength(1)
     expect(lines[0]).toMatchObject({ size: 10, quantity: 1 })
     expect(wrapper.get('button.go').text()).toBe('In the bag')
     expect(wrapper.get('button.go').attributes('disabled')).toBeDefined()
+  })
+
+  it('shows a saved win as already in the bag after a reload', async () => {
+    const drop = makeDrop({ phase: 'closed', entry: { size: 10, result: 'won' } })
+    await useCart().add(drop.sneaker, 10)
+
+    const wrapper = mountTicket(drop)
+
+    expect(wrapper.get('button.go').text()).toBe('In the bag')
+  })
+
+  it('reports a win that could not be bagged', async () => {
+    const wrapper = mountTicket(makeDrop({ phase: 'closed', entry: { size: 10, result: 'won' } }))
+    vi.mocked(addToBag).mockRejectedValueOnce(new Error('403'))
+
+    await wrapper.get('button.go').trigger('click')
+    await flushPromises()
+
+    expect(useCart().count.value).toBe(0)
+    expect(wrapper.get('[role="alert"]').text()).toContain("didn't go through")
   })
 
   it('tells a loser and offers nothing to buy', () => {

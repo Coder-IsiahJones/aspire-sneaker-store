@@ -1,40 +1,40 @@
 import { computed, reactive } from 'vue'
-import type { Sneaker } from '../api'
+import { addToBag, getBag, removeFromBag, type BagLine, type Sneaker } from '../api'
+import { getEntrantId } from './useDrops'
 
-export interface CartLine {
-  key: string
-  sneaker: Sneaker
-  size: number
-  quantity: number
-}
+export type CartLine = BagLine
 
 // Module-level state, so every component that calls useCart() shares one cart.
+// The bag itself lives in Redis, and this mirrors the API's latest answer.
 const lines = reactive<CartLine[]>([])
+
+let latestRequest = 0
 
 const count = computed(() => lines.reduce((sum, line) => sum + line.quantity, 0))
 const total = computed(() =>
   lines.reduce((sum, line) => sum + line.sneaker.price * line.quantity, 0),
 )
 
-function add(sneaker: Sneaker, size: number) {
-  const key = `${sneaker.id}:${size}`
-  const existing = lines.find((line) => line.key === key)
-  if (existing) {
-    existing.quantity++
-  } else {
-    lines.push({ key, sneaker, size, quantity: 1 })
+/** Runs a bag request and shows its result. Resolves to whether it succeeded. */
+async function sync(request: () => Promise<CartLine[]>) {
+  const id = ++latestRequest
+  try {
+    const result = await request()
+    // A slow response must not overwrite a newer one.
+    if (id === latestRequest) lines.splice(0, lines.length, ...result)
+    return true
+  } catch {
+    return false
   }
 }
 
-function remove(key: string) {
-  const index = lines.findIndex((line) => line.key === key)
-  if (index !== -1) {
-    lines.splice(index, 1)
-  }
-}
+const load = () => sync(() => getBag(getEntrantId()))
+const add = (sneaker: Sneaker, size: number) =>
+  sync(() => addToBag(getEntrantId(), sneaker.id, size))
+const remove = (key: string) => sync(() => removeFromBag(getEntrantId(), key))
 
 export function useCart() {
-  return { lines, count, total, add, remove }
+  return { lines, count, total, load, add, remove }
 }
 
 export const formatPrice = (value: number) =>

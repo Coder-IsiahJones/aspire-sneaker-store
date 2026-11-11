@@ -9,6 +9,8 @@ const props = defineProps<{ sneaker: Sneaker; index: number }>()
 const cart = useCart()
 const size = ref<number>()
 const justAdded = ref(false)
+const adding = ref(false)
+const addFailed = ref(false)
 
 // A fake barcode generated from the SKU, so every box label looks different.
 const barcode = computed(() => {
@@ -25,9 +27,21 @@ const barcode = computed(() => {
   return { bars, width: x }
 })
 
-function addToCart() {
-  if (size.value === undefined) return
-  cart.add(props.sneaker, size.value)
+function pickSize(option: number) {
+  size.value = option
+  addFailed.value = false
+}
+
+async function addToCart() {
+  if (size.value === undefined || adding.value) return
+  adding.value = true
+  addFailed.value = false
+  const added = await cart.add(props.sneaker, size.value)
+  adding.value = false
+  if (!added) {
+    addFailed.value = true
+    return
+  }
   justAdded.value = true
   setTimeout(() => (justAdded.value = false), 1200)
 }
@@ -58,7 +72,7 @@ function addToCart() {
           type="button"
           class="size"
           :aria-pressed="size === option"
-          @click="size = option"
+          @click="pickSize(option)"
         >
           {{ option }}
         </button>
@@ -71,8 +85,16 @@ function addToCart() {
         <span class="price">{{ formatPrice(sneaker.price) }}</span>
       </div>
 
-      <button type="button" class="add" :disabled="size === undefined" @click="addToCart">
-        {{ justAdded ? 'In the bag' : size === undefined ? 'Pick a size' : `Add size ${size}` }}
+      <button type="button" class="add" :disabled="size === undefined || adding" @click="addToCart">
+        {{
+          justAdded
+            ? 'In the bag'
+            : addFailed
+              ? "Didn't save. Try again"
+              : size === undefined
+                ? 'Pick a size'
+                : `Add size ${size}`
+        }}
       </button>
     </div>
   </article>

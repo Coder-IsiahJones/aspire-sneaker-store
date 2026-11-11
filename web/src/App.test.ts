@@ -1,12 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
-import { getBrands, getDrops, getSneakers } from './api'
+import { getBag, getBrands, getDrops, getSneakers } from './api'
 import { useCart } from './composables/useCart'
 import { makeDrop } from './test/drop'
+import { resetFakeBag } from './test/fakeBag'
 import { makeSneaker } from './test/sneaker'
 
-vi.mock('./api', () => ({
+vi.mock('./api', async () => ({
+  ...(await import('./test/fakeBag')).fakeBagApi,
   getSneakers: vi.fn(),
   getBrands: vi.fn(),
   getDrops: vi.fn(),
@@ -16,8 +18,8 @@ vi.mock('./api', () => ({
 const dunk = makeSneaker({ name: 'Dunk Low', brand: 'Nike' })
 const samba = makeSneaker({ name: 'Samba OG', brand: 'adidas' })
 
-beforeEach(() => {
-  useCart().lines.splice(0)
+beforeEach(async () => {
+  await resetFakeBag(useCart())
   vi.mocked(getSneakers).mockResolvedValue([samba, dunk])
   vi.mocked(getBrands).mockResolvedValue(['adidas', 'Nike'])
   vi.mocked(getDrops).mockResolvedValue({ serverTime: new Date().toISOString(), drops: [] })
@@ -106,6 +108,28 @@ describe('App', () => {
     wrapper.unmount()
   })
 
+  it('restores the saved bag on load', async () => {
+    vi.mocked(getBag).mockResolvedValueOnce([
+      { key: `${dunk.id}:9`, sneaker: dunk, size: 9, quantity: 2 },
+    ])
+
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.get('.cart-count').text()).toBe('2')
+    wrapper.unmount()
+  })
+
+  it('still shows the catalog when the bag fails to load', async () => {
+    vi.mocked(getBag).mockRejectedValueOnce(new Error('boom'))
+
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(cardNames(wrapper)).toEqual(['Samba OG', 'Dunk Low'])
+    wrapper.unmount()
+  })
+
   it('counts pairs in the bag and opens the cart', async () => {
     const wrapper = mount(App)
     await flushPromises()
@@ -113,6 +137,7 @@ describe('App', () => {
     const card = wrapper.findAll('article')[1]!
     await card.findAll('button.size')[0]!.trigger('click')
     await card.get('button.add').trigger('click')
+    await flushPromises()
 
     expect(wrapper.get('.cart-count').text()).toBe('1')
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)

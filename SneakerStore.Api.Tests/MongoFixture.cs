@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using MongoDB.Driver;
 using Testcontainers.MongoDb;
+using Testcontainers.Redis;
 
 namespace SneakerStore.Api.Tests;
 
@@ -12,6 +13,7 @@ namespace SneakerStore.Api.Tests;
 public sealed class MongoFixture : IAsyncLifetime
 {
     private readonly MongoDbContainer _container = new MongoDbBuilder("mongo:8.0").Build();
+    private readonly RedisContainer _redis = new RedisBuilder("redis:8.0").Build();
 
     private WebApplicationFactory<Program>? _factory;
 
@@ -22,7 +24,7 @@ public sealed class MongoFixture : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        await _container.StartAsync();
+        await Task.WhenAll(_container.StartAsync(), _redis.StartAsync());
 
         Client = new MongoClient(_container.GetConnectionString());
 
@@ -38,6 +40,7 @@ public sealed class MongoFixture : IAsyncLifetime
         {
             builder.UseEnvironment("Development");
             builder.UseSetting("ConnectionStrings:sneakerdb", apiConnectionString);
+            builder.UseSetting("ConnectionStrings:redis", _redis.GetConnectionString());
         });
     }
 
@@ -54,6 +57,7 @@ public sealed class MongoFixture : IAsyncLifetime
 
         Client?.Dispose();
         await _container.DisposeAsync();
+        await _redis.DisposeAsync();
     }
 }
 

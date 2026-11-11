@@ -1,10 +1,11 @@
 # Stockroom: a sneaker store run by Aspire
 
-A small demo store with three parts, all started by one `aspire run`:
+A small demo store with four parts, all started by one `aspire run`:
 
 - `web/` is a Vue 3 + Vite frontend.
 - `SneakerStore.Api/` is a C# minimal API.
 - MongoDB runs in a container. The API seeds it with 12 sneakers on first start.
+- Redis runs in a container. It holds shoppers' bags and caches catalog responses.
 
 `apphost.cs` is a single-file Aspire AppHost that wires them together.
 
@@ -61,7 +62,7 @@ Actions tab. The API job temporarily uses `ubuntu-22.04` because newer runner
 kernels are incompatible with MongoDB 8.0. GitHub plans to retire that runner
 image in April 2027, so this workaround will need to be revisited.
 
-- `SneakerStore.Api.Tests/` uses xUnit v3. The endpoint and seeder tests start a throwaway `mongo:8.0` container with Testcontainers and run the API in memory against it, so the sorting and brand filtering are checked against real MongoDB collation. `global.json` opts `dotnet test` into Microsoft.Testing.Platform, which xUnit v3 needs on the .NET 10+ SDK.
+- `SneakerStore.Api.Tests/` uses xUnit v3. The endpoint and seeder tests start throwaway `mongo:8.0` and `redis:8.0` containers with Testcontainers and run the API in memory against them, so the sorting and brand filtering are checked against real MongoDB collation. `global.json` opts `dotnet test` into Microsoft.Testing.Platform, which xUnit v3 needs on the .NET 10+ SDK.
 - `web/` uses Vitest with Vue Test Utils and happy-dom. Tests sit next to the code they cover (`*.test.ts`) and mock `fetch` or the `api` module, so they don't need the API running. `npm run test:watch` reruns them on save.
 
 ## How the pieces connect
@@ -69,11 +70,18 @@ image in April 2027, so this workaround will need to be revisited.
 | Piece | How it gets its connection info |
 | --- | --- |
 | API to MongoDB | `WithReference(sneakerDb)` in the AppHost gives the API a `ConnectionStrings__sneakerdb` variable. `builder.AddMongoDBClient("sneakerdb")` reads it. |
+| API to Redis | `WithReference(redis)` in the AppHost gives the API a `ConnectionStrings__redis` variable. `builder.AddRedisOutputCache("redis")` reads it. |
 | Vite to API | `WithReference(api)` gives the Vite process an `API_HTTP` variable. `vite.config.ts` proxies `/api` to it. |
+
+## Redis
+
+Each browser's bag is a Redis hash at `bag:{id}`, using the same `localStorage` ID as raffle entries. The hash stores only sneaker IDs, sizes and quantities, so names and prices always come from MongoDB. A bag expires 30 days after its last add. The Redis data volume keeps bags across restarts.
+
+`GET /api/sneakers`, `GET /api/sneakers/{id}` and `GET /api/brands` are cached in Redis for 60 seconds with ASP.NET output caching. A cache hit has an `Age` response header. The cache is cleared when the API starts, and drops and bags are never cached.
 
 ## Drops
 
-The loading dock at the top of the store runs raffles for limited pairs that aren't in the regular catalog. A drop counts down to opening, takes entries until it closes, then draws winners at random. The draw runs the first time the drop is read after closing, and the first result written is permanent. Winners can add their pair to the bag.
+The loading dock at the top of the store runs raffles for limited pairs that aren't in the regular catalog. A drop counts down to opening, takes entries until it closes, then draws winners at random. The draw runs the first time the drop is read after closing, and the first result written is permanent. The API only lets a winner add their pair to the bag, in the size they entered, one at a time.
 
 There are no accounts, so an entrant is a random ID kept in the browser's `localStorage`. The database allows one entry per ID per drop, but clearing storage or switching browsers gets a new ID. A real store would tie entries to verified accounts.
 
@@ -86,6 +94,9 @@ The seed schedule is relative to when it was created: one drop is live for 10 mi
 | `GET /api/sneakers?brand=Nike` | Sneakers, optionally filtered by brand |
 | `GET /api/sneakers/{id}` | One sneaker |
 | `GET /api/brands` | Distinct brand names |
+| `GET /api/bag` | The bag for the `X-Entrant-Id` header |
+| `POST /api/bag/items` | Add `{ "sneakerId": "...", "size": 9.5 }` to the bag and return it. Returns 403 for a limited pair the caller didn't win. |
+| `DELETE /api/bag/items/{key}` | Remove a line and return the bag |
 | `GET /api/drops` | Raffle drops and the server's clock. Send `X-Entrant-Id` to include that entrant's entry and result. |
 | `POST /api/drops/{id}/entries` | Enter a drop's raffle with `{ "size": 9.5 }` and an `X-Entrant-Id` header. Returns 409 if the drop isn't open or that entrant already entered. |
 | `GET /health` | Health checks, including MongoDB (Development only) |

@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { formatPrice, useCart } from '../composables/useCart'
 
 const open = defineModel<boolean>({ required: true })
 const { lines, count, total, remove } = useCart()
+const removeFailed = ref(false)
+
+async function removeLine(key: string) {
+  removeFailed.value = !(await remove(key))
+}
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') open.value = false
@@ -39,7 +44,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             </div>
             <div class="line-right">
               <span>{{ formatPrice(line.sneaker.price * line.quantity) }}</span>
-              <button type="button" class="remove" @click="remove(line.key)">remove</button>
+              <button type="button" class="remove" @click="removeLine(line.key)">remove</button>
             </div>
           </li>
         </ul>
@@ -49,6 +54,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <span>{{ formatPrice(total) }}</span>
         </div>
 
+        <p v-if="removeFailed" class="note note-error" role="alert">Couldn't remove that. Try again.</p>
         <p class="note">Demo store. Checkout is not wired up.</p>
       </div>
     </aside>
@@ -190,6 +196,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   text-align: center;
   font-size: 11px;
   color: var(--muted);
+}
+
+.note-error {
+  color: var(--hot);
 }
 
 .fade-enter-active,

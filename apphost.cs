@@ -2,6 +2,7 @@
 #:package Aspire.Hosting.Dotnet@17.1.0-preview.1.26560.7
 #:package Aspire.Hosting.JavaScript@17.1.0-preview.1.26560.7
 #:package Aspire.Hosting.MongoDB@17.1.0-preview.1.26560.7
+#:package Aspire.Hosting.Redis@17.1.0-preview.1.26560.7
 #:property AspireUseCliBundle=true
 
 var builder = DistributedApplication.CreateBuilder(args);
@@ -11,9 +12,15 @@ var mongo = builder.AddMongoDB("mongo")
 
 var sneakerDb = mongo.AddDatabase("sneakerdb");
 
+// The data volume keeps shoppers' bags across restarts.
+var redis = builder.AddRedis("redis")
+                   .WithDataVolume();
+
 var api = builder.AddDotnetProject("api", "./SneakerStore.Api/SneakerStore.Api.csproj")
     .WithReference(sneakerDb)
     .WaitFor(sneakerDb)
+    .WithReference(redis)
+    .WaitFor(redis)
     .WithHttpHealthCheck("/health")
     // Adds a "Swagger UI" link next to the API in the dashboard.
     .WithUrlForEndpoint("http", _ => new() { Url = "/swagger", DisplayText = "Swagger UI" });

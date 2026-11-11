@@ -1,12 +1,14 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { addToBag, type BagLine } from '../api'
 import { useCart } from '../composables/useCart'
+import { resetFakeBag } from '../test/fakeBag'
 import { makeSneaker } from '../test/sneaker'
 import SneakerCard from './SneakerCard.vue'
 
-beforeEach(() => {
-  useCart().lines.splice(0)
-})
+vi.mock('../api', async () => (await import('../test/fakeBag')).fakeBagApi)
+
+beforeEach(() => resetFakeBag(useCart()))
 
 afterEach(() => {
   vi.useRealTimers()
@@ -77,6 +79,7 @@ describe('SneakerCard', () => {
 
     await sizeButton(wrapper, '11').trigger('click')
     await addButton(wrapper).trigger('click')
+    await flushPromises()
 
     expect(useCart().lines).toEqual([
       { key: `${sneaker.id}:11`, sneaker, size: 11, quantity: 1 },
@@ -86,6 +89,39 @@ describe('SneakerCard', () => {
     await vi.advanceTimersByTimeAsync(1200)
 
     expect(addButton(wrapper).text()).toBe('Add size 11')
+  })
+
+  it('says so when the add fails, and clears it on a new size', async () => {
+    const { wrapper } = mountCard()
+    vi.mocked(addToBag).mockRejectedValueOnce(new Error('503'))
+
+    await sizeButton(wrapper, '11').trigger('click')
+    await addButton(wrapper).trigger('click')
+    await flushPromises()
+
+    expect(addButton(wrapper).text()).toBe("Didn't save. Try again")
+    expect(useCart().count.value).toBe(0)
+
+    await sizeButton(wrapper, '8').trigger('click')
+
+    expect(addButton(wrapper).text()).toBe('Add size 8')
+  })
+
+  it('blocks a second click while the add is in flight', async () => {
+    const { wrapper } = mountCard()
+    let finish!: (lines: BagLine[]) => void
+    vi.mocked(addToBag).mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
+    await sizeButton(wrapper, '11').trigger('click')
+
+    await addButton(wrapper).trigger('click')
+
+    expect(addButton(wrapper).attributes('disabled')).toBeDefined()
+    await addButton(wrapper).trigger('click')
+    expect(addToBag).toHaveBeenCalledTimes(1)
+
+    finish([])
+    await flushPromises()
+    expect(addButton(wrapper).attributes('disabled')).toBeUndefined()
   })
 
   it('draws a barcode that depends on the SKU', () => {

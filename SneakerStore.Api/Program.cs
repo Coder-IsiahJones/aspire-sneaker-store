@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using SneakerStore.Api.Data;
@@ -24,11 +25,25 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton<DropSeeder>();
 builder.Services.AddSingleton<DropRaffle>();
 
+// "redis" matches the resource name in apphost.cs. This registers the Redis-backed
+// output cache and the IConnectionMultiplexer that BagStore uses.
+builder.AddRedisOutputCache("redis");
+builder.Services.AddOutputCache(options =>
+{
+    options.AddPolicy(CatalogCache.Policy, policy => policy
+        .Expire(TimeSpan.FromSeconds(60))
+        .SetVaryByQuery("brand")
+        .Tag(CatalogCache.Tag));
+});
+builder.Services.AddSingleton<BagStore>();
+
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
+
+app.UseOutputCache();
 
 if (app.Environment.IsDevelopment())
 {
@@ -43,7 +58,10 @@ if (app.Environment.IsDevelopment())
 await app.Services.GetRequiredService<SneakerSeeder>().SeedAsync();
 await app.Services.GetRequiredService<DropSeeder>().SeedAsync();
 
-var api = app.MapGroup("/api").WithTags("Sneakers");
+// Redis outlives the API, so drop anything cached from before this start's seed.
+await app.Services.GetRequiredService<IOutputCacheStore>().EvictByTagAsync(CatalogCache.Tag, default);
+
+var api = app.MapGroup("/api").WithTags("Sneakers").CacheOutput(CatalogCache.Policy);
 
 api.MapGet("/sneakers", async (string? brand, IMongoCollection<Sneaker> sneakers) =>
 {
@@ -161,7 +179,7 @@ dropsApi.MapPost("/drops/{id}/entries", async (
 
     if (!TryNormalizeEntrant(entrantHeader, out var entrantId))
     {
-        return Results.Problem("X-Entrant-Id must be a GUID.", statusCode: StatusCodes.Status400BadRequest);
+        return BadEntrant();
     }
 
     if (!drop.Sneaker.Sizes.Contains(request.Size))
@@ -194,7 +212,66 @@ dropsApi.MapPost("/drops/{id}/entries", async (
 .Produces(StatusCodes.Status404NotFound)
 .ProducesProblem(StatusCodes.Status409Conflict);
 
+var bagApi = app.MapGroup("/api").WithTags("Bag");
+
+bagApi.MapGet("/bag", async ([FromHeader(Name = "X-Entrant-Id")] string? entrantHeader, BagStore bag) =>
+    TryNormalizeEntrant(entrantHeader, out var shopperId)
+        ? Results.Ok(await bag.GetAsync(shopperId))
+        : BadEntrant())
+.WithName("GetBag")
+.WithSummary("Get the shopper's bag")
+.Produces<List<BagLine>>()
+.ProducesProblem(StatusCodes.Status400BadRequest);
+
+bagApi.MapPost("/bag/items", async (
+    AddToBagRequest request,
+    [FromHeader(Name = "X-Entrant-Id")] string? entrantHeader,
+    BagStore bag) =>
+{
+    if (!TryNormalizeEntrant(entrantHeader, out var shopperId))
+    {
+        return BadEntrant();
+    }
+
+    return await bag.AddAsync(shopperId, request.SneakerId, request.Size) switch
+    {
+        BagAddResult.Added => Results.Ok(await bag.GetAsync(shopperId)),
+        BagAddResult.NotFound => Results.NotFound(),
+        BagAddResult.InvalidSize => Results.Problem("That size isn't available.", statusCode: StatusCodes.Status400BadRequest),
+        BagAddResult.NotWinner => Results.Problem("Only the raffle's winners can bag this pair.", statusCode: StatusCodes.Status403Forbidden),
+        _ => Results.Problem("This pair is already in the bag.", statusCode: StatusCodes.Status409Conflict),
+    };
+})
+.WithName("AddToBag")
+.WithSummary("Add a pair to the shopper's bag and return the bag")
+.Produces<List<BagLine>>()
+.ProducesProblem(StatusCodes.Status400BadRequest)
+.ProducesProblem(StatusCodes.Status403Forbidden)
+.Produces(StatusCodes.Status404NotFound)
+.ProducesProblem(StatusCodes.Status409Conflict);
+
+bagApi.MapDelete("/bag/items/{key}", async (
+    string key,
+    [FromHeader(Name = "X-Entrant-Id")] string? entrantHeader,
+    BagStore bag) =>
+{
+    if (!TryNormalizeEntrant(entrantHeader, out var shopperId))
+    {
+        return BadEntrant();
+    }
+
+    await bag.RemoveAsync(shopperId, key);
+    return Results.Ok(await bag.GetAsync(shopperId));
+})
+.WithName("RemoveFromBag")
+.WithSummary("Remove a line from the shopper's bag and return the bag")
+.Produces<List<BagLine>>()
+.ProducesProblem(StatusCodes.Status400BadRequest);
+
 app.Run();
+
+static IResult BadEntrant() =>
+    Results.Problem("X-Entrant-Id must be a GUID.", statusCode: StatusCodes.Status400BadRequest);
 
 // Normalized so the same GUID written two ways can't count as two entrants.
 static bool TryNormalizeEntrant(string? header, out string entrantId)

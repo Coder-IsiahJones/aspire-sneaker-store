@@ -12,6 +12,13 @@ export interface Sneaker {
   description: string
 }
 
+export interface BagLine {
+  key: string
+  sneaker: Sneaker
+  size: number
+  quantity: number
+}
+
 export type DropPhase = 'upcoming' | 'open' | 'closed'
 
 export interface DropEntry {
@@ -55,6 +62,30 @@ export function getSneakers(brand?: string) {
 
 export function getBrands() {
   return getJson<string[]>('/api/brands')
+}
+
+export async function getBag(entrantId: string) {
+  const path = '/api/bag'
+  return readJson<BagLine[]>(await fetch(path, { headers: { 'X-Entrant-Id': entrantId } }), path)
+}
+
+export async function addToBag(entrantId: string, sneakerId: string, size: number) {
+  const path = '/api/bag/items'
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Entrant-Id': entrantId },
+    body: JSON.stringify({ sneakerId, size }),
+  })
+  return readJson<BagLine[]>(response, path)
+}
+
+export async function removeFromBag(entrantId: string, key: string) {
+  const path = `/api/bag/items/${encodeURIComponent(key)}`
+  const response = await fetch(path, {
+    method: 'DELETE',
+    headers: { 'X-Entrant-Id': entrantId },
+  })
+  return readJson<BagLine[]>(response, path)
 }
 
 export async function getDrops(entrantId: string) {
