@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <ProjectReference Include="..\SneakerStore.Messaging\SneakerStore.Messaging.csproj" />
     <ProjectReference Include="..\SneakerStore.ServiceDefaults\SneakerStore.ServiceDefaults.csproj" />
   </ItemGroup>
 

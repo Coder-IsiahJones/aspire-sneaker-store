@@ -6,6 +6,7 @@ using MongoDB.Driver;
 using SneakerStore.Api.Data;
 using SneakerStore.Api.Endpoints;
 using SneakerStore.Api.Models;
+using SneakerStore.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,6 +44,11 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton<AccountIndexes>();
 builder.Services.AddSingleton<OrderStore>();
 builder.Services.AddSingleton<IPasswordHasher<Account>, PasswordHasher<Account>>();
+
+// "messaging" matches the RabbitMQ resource name in apphost.cs. This registers one shared
+// IConnection, which EventPublisher uses to announce orders.
+builder.AddRabbitMQClient("messaging");
+builder.Services.AddSingleton<EventPublisher>();
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
