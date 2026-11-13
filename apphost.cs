@@ -32,6 +32,14 @@ var api = builder.AddDotnetProject("api", "./SneakerStore.Api/SneakerStore.Api.c
     // Adds a "Swagger UI" link next to the API in the dashboard.
     .WithUrlForEndpoint("http", _ => new() { Url = "/swagger", DisplayText = "Swagger UI" });
 
+// Two copies of the worker consume the same queues, so RabbitMQ deals the orders out between them.
+builder.AddDotnetProject("worker", "./SneakerStore.Worker/SneakerStore.Worker.csproj")
+    .WithReference(messaging)
+    .WaitFor(messaging)
+    .WithReference(sneakerDb)
+    .WaitFor(sneakerDb)
+    .WithReplicas(2);
+
 builder.AddViteApp("web", "./web")
     .WithReference(api)
     .WaitFor(api)

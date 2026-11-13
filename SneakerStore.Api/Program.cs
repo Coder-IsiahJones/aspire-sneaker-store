@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.OutputCaching;
 using MongoDB.Driver;
+using RabbitMQ.Client;
 using SneakerStore.Api.Data;
 using SneakerStore.Api.Endpoints;
 using SneakerStore.Api.Models;
@@ -46,9 +47,9 @@ builder.Services.AddSingleton<OrderStore>();
 builder.Services.AddSingleton<IPasswordHasher<Account>, PasswordHasher<Account>>();
 
 // "messaging" matches the RabbitMQ resource name in apphost.cs. This registers one shared
-// IConnection, which EventPublisher uses to announce orders.
+// IConnection, which EventPublisher opens the first time an order is announced.
 builder.AddRabbitMQClient("messaging");
-builder.Services.AddSingleton<EventPublisher>();
+builder.Services.AddSingleton(services => new EventPublisher(services.GetRequiredService<IConnection>));
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>

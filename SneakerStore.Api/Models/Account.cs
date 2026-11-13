@@ -37,6 +37,11 @@ public sealed class Order
 
     [BsonRepresentation(BsonType.Decimal128)]
     public decimal Total { get; init; }
+
+    // Written by the worker, each one once, in whichever order the two jobs finish.
+    // That is why they are two timestamps and not one status that moves forward.
+    public DateTime? ReceiptSentAt { get; init; }
+    public DateTime? PackedAt { get; init; }
 }
 
 // A copy of the shoe at the moment of purchase, so history doesn't change with the catalog.
@@ -62,7 +67,14 @@ public sealed record AccountView(string Email);
 // A 200 with a null account, so an anonymous page load isn't logged as a failed request.
 public sealed record AccountSession(AccountView? Account);
 
-public sealed record OrderView(string Id, DateTime PlacedAt, List<OrderLine> Lines, decimal Total)
+public sealed record OrderView(
+    string Id,
+    DateTime PlacedAt,
+    List<OrderLine> Lines,
+    decimal Total,
+    DateTime? ReceiptSentAt,
+    DateTime? PackedAt)
 {
-    public static OrderView From(Order order) => new(order.Id!, order.PlacedAt, order.Lines, order.Total);
+    public static OrderView From(Order order) =>
+        new(order.Id!, order.PlacedAt, order.Lines, order.Total, order.ReceiptSentAt, order.PackedAt);
 }

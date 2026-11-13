@@ -8,6 +8,7 @@ using MongoDB.Bson;
 using MongoDB.Driver;
 using SneakerStore.Api.Data;
 using SneakerStore.Api.Models;
+using SneakerStore.Messaging;
 
 namespace SneakerStore.Api.Endpoints;
 
@@ -194,21 +195,56 @@ public static class AccountEndpoints
         .Produces<List<OrderView>>()
         .Produces(StatusCodes.Status401Unauthorized);
 
-        member.MapPost("/orders", async (ClaimsPrincipal user, OrderStore orders) =>
+        member.MapPost("/orders", async (
+            ClaimsPrincipal user,
+            OrderStore orders,
+            EventPublisher events,
+            ILoggerFactory loggers) =>
         {
             var order = await orders.PlaceAsync(AccountId(user)!, user.FindFirstValue(ShopperIdentity.ClaimType)!);
-            return order is null
-                ? Results.Problem("The bag is empty.", statusCode: StatusCodes.Status409Conflict)
-                : Results.Created($"/api/orders/{order.Id}", OrderView.From(order));
+            if (order is null)
+            {
+                return Results.Problem("The bag is empty.", statusCode: StatusCodes.Status409Conflict);
+            }
+
+            // The order is saved. Everything that follows from it (the receipt, the packing) happens
+            // in the worker, so checkout only has to say that the order exists.
+            await AnnounceAsync(order, user.FindFirstValue(ClaimTypes.Email)!, events, loggers.CreateLogger("Orders"));
+            return Results.Created($"/api/orders/{order.Id}", OrderView.From(order));
         })
         .WithName("PlaceOrder")
-        .WithSummary("Turn the bag into an order. No payment is taken.")
+        .WithSummary("Turn the bag into an order and announce it. No payment is taken.")
         .Produces<OrderView>(StatusCodes.Status201Created)
         .Produces(StatusCodes.Status401Unauthorized)
         .ProducesProblem(StatusCodes.Status409Conflict);
     }
 
     private static string? AccountId(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    /// <summary>
+    /// Publishes <see cref="OrderPlaced"/>. This runs after the order is saved and outside
+    /// <see cref="OrderStore.PlaceAsync"/>, so a broker problem can't undo a checkout. It is not an
+    /// outbox: if the broker is unreachable at this moment, the order exists and nobody hears about
+    /// it, so it never gets a receipt or a packing time.
+    /// </summary>
+    private static async Task AnnounceAsync(Order order, string email, EventPublisher events, ILogger logger)
+    {
+        // Checkout shouldn't hang on the broker either.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            await events.PublishAsync(
+                Topology.Keys.OrderPlaced,
+                new OrderPlaced(order.Id!, order.AccountId, email, order.Lines.Sum(l => l.Quantity), order.Total, order.PlacedAt),
+                // Both work queues are bound to this key. If the broker can't route it, that's an error.
+                mandatory: true,
+                timeout.Token);
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Order {OrderId} was saved but could not be announced.", order.Id);
+        }
+    }
 
     private static bool TryNormalizeEmail(string? input, out string email)
     {

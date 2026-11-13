@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SneakerStore.Api\SneakerStore.Api.csproj" />
+    <ProjectReference Include="..\SneakerStore.Worker\SneakerStore.Worker.csproj" />
   </ItemGroup>
 
   <ItemGroup>

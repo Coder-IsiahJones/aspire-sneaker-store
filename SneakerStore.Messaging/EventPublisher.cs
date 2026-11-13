@@ -5,9 +5,10 @@ namespace SneakerStore.Messaging;
 /// <summary>
 /// Publishes order events to <see cref="Topology.Exchange"/>. It keeps one channel open for the life
 /// of the app, and lets one caller publish at a time, because a channel must not be used by
-/// concurrent publishers.
+/// concurrent publishers. The connection is asked for on first use, so an app can start, and fail
+/// one publish at a time, while the broker is unreachable.
 /// </summary>
-public sealed class EventPublisher(IConnection connection) : IAsyncDisposable
+public sealed class EventPublisher(Func<IConnection> connect) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IChannel? _channel;
@@ -59,7 +60,7 @@ public sealed class EventPublisher(IConnection connection) : IAsyncDisposable
         }
 
         // With confirmations tracked, awaiting BasicPublishAsync waits for the broker's answer.
-        _channel = await connection.CreateChannelAsync(
+        _channel = await connect().CreateChannelAsync(
             new CreateChannelOptions(
                 publisherConfirmationsEnabled: true,
                 publisherConfirmationTrackingEnabled: true),
