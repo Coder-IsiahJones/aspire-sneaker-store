@@ -45,4 +45,9 @@ builder.AddViteApp("web", "./web")
     .WaitFor(api)
     .WithExternalHttpEndpoints();
 
+// The back-room dashboard: a React app on the same API, for watching the queues.
+builder.AddViteApp("ops", "./ops")
+    .WithReference(api)
+    .WaitFor(api);
+
 builder.Build().Run();

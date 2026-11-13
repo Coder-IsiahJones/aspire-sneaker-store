@@ -14,7 +14,7 @@ public sealed class OrderFeedTests(MongoFixture fixture)
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     /// <summary>Reads one event: its "event:" and "data:" lines, up to the blank line that ends it.</summary>
-    private static async Task<(string Type, string Data)> NextEventAsync(StreamReader stream)
+    internal static async Task<(string Type, string Data)> NextEventAsync(StreamReader stream)
     {
         using var patience = CancellationTokenSource.CreateLinkedTokenSource(Ct);
         patience.CancelAfter(TimeSpan.FromSeconds(10));

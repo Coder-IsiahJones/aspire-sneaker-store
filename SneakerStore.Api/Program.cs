@@ -127,4 +127,10 @@ app.MapDropEndpoints();
 app.MapBagEndpoints();
 app.MapAccountEndpoints();
 
+if (app.Environment.IsDevelopment())
+{
+    // Unauthenticated, and one of them publishes made-up orders. Never outside Development.
+    app.MapOpsEndpoints();
+}
+
 app.Run();
