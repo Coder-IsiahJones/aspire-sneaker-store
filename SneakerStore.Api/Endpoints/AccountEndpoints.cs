@@ -1,4 +1,6 @@
 using System.Net.Mail;
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -7,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using SneakerStore.Api.Data;
+using SneakerStore.Api.Messaging;
 using SneakerStore.Api.Models;
 using SneakerStore.Messaging;
 
@@ -195,6 +198,16 @@ public static class AccountEndpoints
         .Produces<List<OrderView>>()
         .Produces(StatusCodes.Status401Unauthorized);
 
+        member.MapGet("/orders/events", (
+            ClaimsPrincipal user,
+            OrderFeed feed,
+            IHostApplicationLifetime lifetime,
+            CancellationToken requestAborted) =>
+            TypedResults.ServerSentEvents(WatchAsync(AccountId(user)!, feed, lifetime, requestAborted)))
+        .WithName("WatchOrders")
+        .WithSummary("A Server-Sent Events stream: 'ready' once, then 'order.confirmed' and 'order.packed' for the account's orders")
+        .Produces(StatusCodes.Status401Unauthorized);
+
         member.MapPost("/orders", async (
             ClaimsPrincipal user,
             OrderStore orders,
@@ -243,6 +256,34 @@ public static class AccountEndpoints
         catch (Exception e)
         {
             logger.LogError(e, "Order {OrderId} was saved but could not be announced.", order.Id);
+        }
+    }
+
+    /// <summary>
+    /// The stream ends when the browser leaves or the API shuts down. Without the second, open
+    /// streams would hold up every restart.
+    /// </summary>
+    private static async IAsyncEnumerable<SseItem<OrderUpdate?>> WatchAsync(
+        string accountId,
+        OrderFeed feed,
+        IHostApplicationLifetime lifetime,
+        [EnumeratorCancellation] CancellationToken requestAborted)
+    {
+        using var ended = CancellationTokenSource.CreateLinkedTokenSource(requestAborted, lifetime.ApplicationStopping);
+        using var subscription = feed.Subscribe();
+
+        // Sent once the subscription exists. A browser that re-reads its orders when it sees this
+        // can't miss an update that lands between the two.
+        yield return new SseItem<OrderUpdate?>(null, "ready");
+
+        await foreach (var next in subscription.ReadAllAsync(ended.Token))
+        {
+            // Only this shopper's orders, and only what happened after checkout.
+            if (next.AccountId == accountId && next.Key != Topology.Keys.OrderPlaced)
+            {
+                var at = next.Data.GetProperty("at").GetDateTime();
+                yield return new SseItem<OrderUpdate?>(new OrderUpdate(next.OrderId, at), next.Key);
+            }
         }
     }
 

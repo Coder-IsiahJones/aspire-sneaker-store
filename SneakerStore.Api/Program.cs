@@ -6,6 +6,7 @@ using MongoDB.Driver;
 using RabbitMQ.Client;
 using SneakerStore.Api.Data;
 using SneakerStore.Api.Endpoints;
+using SneakerStore.Api.Messaging;
 using SneakerStore.Api.Models;
 using SneakerStore.Messaging;
 
@@ -50,6 +51,10 @@ builder.Services.AddSingleton<IPasswordHasher<Account>, PasswordHasher<Account>>
 // IConnection, which EventPublisher opens the first time an order is announced.
 builder.AddRabbitMQClient("messaging");
 builder.Services.AddSingleton(services => new EventPublisher(services.GetRequiredService<IConnection>));
+
+// One instance, registered twice: endpoints subscribe to it, and the host starts and stops it.
+builder.Services.AddSingleton<OrderFeed>();
+builder.Services.AddHostedService(services => services.GetRequiredService<OrderFeed>());
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>

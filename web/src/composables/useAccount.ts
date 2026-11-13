@@ -86,7 +86,12 @@ async function toggleWishlist(sneaker: Sneaker) {
 /** Places the order and shows it. Resolves to whether it succeeded. */
 async function checkout() {
   try {
-    orders.value = [await placeOrder(), ...orders.value]
+    const placed = await placeOrder()
+    // The worker can announce progress before this response arrives. If that already put the
+    // order on screen, that copy is the newer one.
+    if (!orders.value.some((order) => order.id === placed.id)) {
+      orders.value = [placed, ...orders.value]
+    }
     panelTab.value = 'orders'
     return true
   } catch {
@@ -94,6 +99,37 @@ async function checkout() {
   } finally {
     // On success the bag is empty. On failure it may have changed under us.
     await useCart().load()
+  }
+}
+
+/**
+ * Reads the orders again. A response can be older than what's on screen, because progress also
+ * arrives as events, so a time that's already showing is never replaced by an empty one.
+ */
+async function refreshOrders() {
+  if (!account.value) {
+    return
+  }
+  const fetched = await getOrders()
+  const shown = new Map(orders.value.map((order) => [order.id, order]))
+  orders.value = fetched.map((order) => {
+    const before = shown.get(order.id)
+    return {
+      ...order,
+      receiptSentAt: order.receiptSentAt ?? before?.receiptSentAt ?? null,
+      packedAt: order.packedAt ?? before?.packedAt ?? null,
+    }
+  })
+}
+
+/** Records progress that the server just announced for one order. */
+async function markOrder(orderId: string, step: 'receiptSentAt' | 'packedAt', at: string) {
+  const order = orders.value.find((candidate) => candidate.id === orderId)
+  if (order) {
+    order[step] ??= at
+  } else {
+    // The event beat the checkout response, so the order isn't on screen yet.
+    await refreshOrders()
   }
 }
 
@@ -111,5 +147,7 @@ export function useAccount() {
     signOut,
     toggleWishlist,
     checkout,
+    refreshOrders,
+    markOrder,
   }
 }

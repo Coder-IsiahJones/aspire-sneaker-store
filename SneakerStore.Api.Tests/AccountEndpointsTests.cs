@@ -261,6 +261,7 @@ public sealed class AccountEndpointsTests(MongoFixture fixture)
     [InlineData("DELETE", "/api/wishlist/000000000000000000000000")]
     [InlineData("GET", "/api/orders")]
     [InlineData("POST", "/api/orders")]
+    [InlineData("GET", "/api/orders/events")]
     public async Task MemberRoutes_Anonymous_Return401WithoutRedirect(string method, string path)
     {
         var response = await Send(Device(), new HttpMethod(method), path, browser: NewBrowser());

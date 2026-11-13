@@ -44,6 +44,8 @@ const order: Order = {
   id: '0000000000000000abc123',
   placedAt: '2026-06-01T12:00:00Z',
   total: 230,
+  receiptSentAt: null,
+  packedAt: null,
   lines: [
     {
       sneakerId: 's1',
@@ -126,6 +128,22 @@ describe('AccountDrawer signed in', () => {
 
   it('says when there are no receipts', () => {
     expect(mountDrawer().get('.empty').text()).toBe('No receipts yet.')
+  })
+
+  it('shows each back-room job as waiting until it is done', async () => {
+    const state = useAccount()
+    state.orders.value = [{ ...order }]
+    const drawer = mountDrawer()
+    const steps = () => drawer.findAll('.progress li').map((step) => step.text())
+
+    expect(steps()).toEqual(['Receipt on its way', 'Waiting to be packed'])
+
+    // Packing can finish before the receipt goes out. They are separate jobs.
+    await state.markOrder(order.id, 'packedAt', '2026-06-01T12:00:05Z')
+    await flushPromises()
+
+    expect(steps()).toEqual(['Receipt on its way', '✓ Packed'])
+    expect(drawer.findAll('.progress .done')).toHaveLength(1)
   })
 
   it('adds a saved shoe to the bag by size', async () => {

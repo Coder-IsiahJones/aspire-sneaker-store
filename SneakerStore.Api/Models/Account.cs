@@ -67,6 +67,9 @@ public sealed record AccountView(string Email);
 // A 200 with a null account, so an anonymous page load isn't logged as a failed request.
 public sealed record AccountSession(AccountView? Account);
 
+// What the order event stream sends for "order.confirmed" and "order.packed".
+public sealed record OrderUpdate(string OrderId, DateTime At);
+
 public sealed record OrderView(
     string Id,
     DateTime PlacedAt,

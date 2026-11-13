@@ -20,7 +20,14 @@ import { useCart } from './useCart'
 
 vi.mock('../api', async () => (await import('../test/fakeBag')).fakeBagApi)
 
-const order: Order = { id: 'order1', placedAt: '2026-06-01T12:00:00Z', total: 100, lines: [] }
+const order: Order = {
+  id: 'order1',
+  placedAt: '2026-06-01T12:00:00Z',
+  total: 100,
+  lines: [],
+  receiptSentAt: null,
+  packedAt: null,
+}
 
 beforeEach(async () => {
   await resetFakeBag(useCart())
@@ -156,5 +163,53 @@ describe('useAccount', () => {
     await expect(useAccount().checkout()).resolves.toBe(false)
 
     expect(getBag).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the copy already on screen when progress beat the checkout response', async () => {
+    const state = useAccount()
+    state.orders.value = [{ ...order, receiptSentAt: '2026-06-01T12:00:01Z' }]
+    vi.mocked(placeOrder).mockResolvedValueOnce(order)
+
+    await state.checkout()
+
+    expect(state.orders.value).toHaveLength(1)
+    expect(state.orders.value[0]!.receiptSentAt).toBe('2026-06-01T12:00:01Z')
+  })
+
+  it('marks progress on an order it is showing, and only the first time', async () => {
+    const state = useAccount()
+    state.orders.value = [{ ...order }]
+
+    await state.markOrder('order1', 'packedAt', '2026-06-01T12:00:05Z')
+    await state.markOrder('order1', 'packedAt', '2026-06-01T12:09:00Z')
+
+    expect(state.orders.value[0]!.packedAt).toBe('2026-06-01T12:00:05Z')
+    expect(getOrders).not.toHaveBeenCalled()
+  })
+
+  it('reads the orders again when progress arrives for one it is not showing', async () => {
+    const state = useAccount()
+    state.account.value = { email: 'me@example.com' }
+    vi.mocked(getOrders).mockResolvedValueOnce([{ ...order, receiptSentAt: '2026-06-01T12:00:01Z' }])
+
+    await state.markOrder('order1', 'receiptSentAt', '2026-06-01T12:00:01Z')
+
+    expect(state.orders.value.map((o) => o.id)).toEqual(['order1'])
+    expect(state.orders.value[0]!.receiptSentAt).toBe('2026-06-01T12:00:01Z')
+  })
+
+  it('never lets an older response erase progress that is already showing', async () => {
+    const state = useAccount()
+    state.account.value = { email: 'me@example.com' }
+    state.orders.value = [{ ...order, packedAt: '2026-06-01T12:00:05Z' }]
+    // Requested before the worker finished, answered after the event arrived.
+    vi.mocked(getOrders).mockResolvedValueOnce([{ ...order, receiptSentAt: '2026-06-01T12:00:01Z' }])
+
+    await state.refreshOrders()
+
+    expect(state.orders.value[0]).toMatchObject({
+      receiptSentAt: '2026-06-01T12:00:01Z',
+      packedAt: '2026-06-01T12:00:05Z',
+    })
   })
 })

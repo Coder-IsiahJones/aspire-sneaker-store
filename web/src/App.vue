@@ -8,6 +8,7 @@ import DropsDock from './components/DropsDock.vue'
 import SneakerCard from './components/SneakerCard.vue'
 import { useAccount } from './composables/useAccount'
 import { useCart } from './composables/useCart'
+import { useOrderEvents } from './composables/useOrderEvents'
 
 const sneakers = ref<Sneaker[]>([])
 const brands = ref<string[]>([])
@@ -18,6 +19,7 @@ const cartOpen = ref(false)
 
 const { count, load: loadBag } = useCart()
 const { account, panelOpen, load: loadAccount } = useAccount()
+useOrderEvents()
 
 async function load() {
   loading.value = true
