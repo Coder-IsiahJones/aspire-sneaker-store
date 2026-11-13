@@ -1,4 +1,6 @@
 using System.Net.Mail;
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -7,7 +9,9 @@ using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using SneakerStore.Api.Data;
+using SneakerStore.Api.Messaging;
 using SneakerStore.Api.Models;
+using SneakerStore.Messaging;
 
 namespace SneakerStore.Api.Endpoints;
 
@@ -194,21 +198,94 @@ public static class AccountEndpoints
         .Produces<List<OrderView>>()
         .Produces(StatusCodes.Status401Unauthorized);
 
-        member.MapPost("/orders", async (ClaimsPrincipal user, OrderStore orders) =>
+        member.MapGet("/orders/events", (
+            ClaimsPrincipal user,
+            OrderFeed feed,
+            IHostApplicationLifetime lifetime,
+            CancellationToken requestAborted) =>
+            TypedResults.ServerSentEvents(WatchAsync(AccountId(user)!, feed, lifetime, requestAborted)))
+        .WithName("WatchOrders")
+        .WithSummary("A Server-Sent Events stream: 'ready' once, then 'order.confirmed' and 'order.packed' for the account's orders")
+        .Produces(StatusCodes.Status401Unauthorized);
+
+        member.MapPost("/orders", async (
+            ClaimsPrincipal user,
+            OrderStore orders,
+            EventPublisher events,
+            ILoggerFactory loggers) =>
         {
             var order = await orders.PlaceAsync(AccountId(user)!, user.FindFirstValue(ShopperIdentity.ClaimType)!);
-            return order is null
-                ? Results.Problem("The bag is empty.", statusCode: StatusCodes.Status409Conflict)
-                : Results.Created($"/api/orders/{order.Id}", OrderView.From(order));
+            if (order is null)
+            {
+                return Results.Problem("The bag is empty.", statusCode: StatusCodes.Status409Conflict);
+            }
+
+            // The order is saved. Everything that follows from it (the receipt, the packing) happens
+            // in the worker, so checkout only has to say that the order exists.
+            await AnnounceAsync(order, user.FindFirstValue(ClaimTypes.Email)!, events, loggers.CreateLogger("Orders"));
+            return Results.Created($"/api/orders/{order.Id}", OrderView.From(order));
         })
         .WithName("PlaceOrder")
-        .WithSummary("Turn the bag into an order. No payment is taken.")
+        .WithSummary("Turn the bag into an order and announce it. No payment is taken.")
         .Produces<OrderView>(StatusCodes.Status201Created)
         .Produces(StatusCodes.Status401Unauthorized)
         .ProducesProblem(StatusCodes.Status409Conflict);
     }
 
     private static string? AccountId(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    /// <summary>
+    /// Publishes <see cref="OrderPlaced"/>. This runs after the order is saved and outside
+    /// <see cref="OrderStore.PlaceAsync"/>, so a broker problem can't undo a checkout. It is not an
+    /// outbox: if the broker is unreachable at this moment, the order exists and nobody hears about
+    /// it, so it never gets a receipt or a packing time.
+    /// </summary>
+    private static async Task AnnounceAsync(Order order, string email, EventPublisher events, ILogger logger)
+    {
+        // Checkout shouldn't hang on the broker either.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            await events.PublishAsync(
+                Topology.Keys.OrderPlaced,
+                new OrderPlaced(order.Id!, order.AccountId, email, order.Lines.Sum(l => l.Quantity), order.Total, order.PlacedAt),
+                // Both work queues are bound to this key. If the broker can't route it, that's an error.
+                mandatory: true,
+                timeout.Token);
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Order {OrderId} was saved but could not be announced.", order.Id);
+        }
+    }
+
+    /// <summary>
+    /// The stream ends when the browser leaves or the API shuts down. Without the second, open
+    /// streams would hold up every restart.
+    /// </summary>
+    private static async IAsyncEnumerable<SseItem<OrderUpdate?>> WatchAsync(
+        string accountId,
+        OrderFeed feed,
+        IHostApplicationLifetime lifetime,
+        [EnumeratorCancellation] CancellationToken requestAborted)
+    {
+        using var ended = CancellationTokenSource.CreateLinkedTokenSource(requestAborted, lifetime.ApplicationStopping);
+        using var subscription = feed.Subscribe();
+
+        // Sent once the subscription exists. A browser that re-reads its orders when it sees this
+        // can't miss an update that lands between the two.
+        yield return new SseItem<OrderUpdate?>(null, "ready");
+
+        await foreach (var next in subscription.ReadAllAsync(ended.Token))
+        {
+            // Only this shopper's orders, and only what happened after checkout.
+            if (next.AccountId == accountId && next.Key != Topology.Keys.OrderPlaced)
+            {
+                var at = next.Data.GetProperty("at").GetDateTime();
+                yield return new SseItem<OrderUpdate?>(new OrderUpdate(next.OrderId, at), next.Key);
+            }
+        }
+    }
 
     private static bool TryNormalizeEmail(string? input, out string email)
     {

@@ -3,9 +3,12 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.OutputCaching;
 using MongoDB.Driver;
+using RabbitMQ.Client;
 using SneakerStore.Api.Data;
 using SneakerStore.Api.Endpoints;
+using SneakerStore.Api.Messaging;
 using SneakerStore.Api.Models;
+using SneakerStore.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,6 +46,15 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton<AccountIndexes>();
 builder.Services.AddSingleton<OrderStore>();
 builder.Services.AddSingleton<IPasswordHasher<Account>, PasswordHasher<Account>>();
+
+// "messaging" matches the RabbitMQ resource name in apphost.cs. This registers one shared
+// IConnection, which EventPublisher opens the first time an order is announced.
+builder.AddRabbitMQClient("messaging");
+builder.Services.AddSingleton(services => new EventPublisher(services.GetRequiredService<IConnection>));
+
+// One instance, registered twice: endpoints subscribe to it, and the host starts and stops it.
+builder.Services.AddSingleton<OrderFeed>();
+builder.Services.AddHostedService(services => services.GetRequiredService<OrderFeed>());
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -114,5 +126,11 @@ app.MapCatalogEndpoints();
 app.MapDropEndpoints();
 app.MapBagEndpoints();
 app.MapAccountEndpoints();
+
+if (app.Environment.IsDevelopment())
+{
+    // Unauthenticated, and one of them publishes made-up orders. Never outside Development.
+    app.MapOpsEndpoints();
+}
 
 app.Run();

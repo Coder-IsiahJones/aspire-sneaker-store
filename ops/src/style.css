@@ -1,0 +1,366 @@
+/* Same tokens as web/src/style.css, so the back room looks like part of the store. */
+:root {
+  --paper: #eee7da;
+  --label: #fbfaf6;
+  --kraft: #caa475;
+  --kraft-dark: #9c7546;
+  --ink: #141414;
+  --muted: #6b6257;
+  --hot: #ff4f1a;
+
+  --display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  color-scheme: light;
+  color: var(--ink);
+  font: 400 14px/1.5 var(--mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(20, 20, 20, 0.05) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, rgba(20, 20, 20, 0.05) 1px, transparent 1px) 0 0 / 28px 28px,
+    var(--paper);
+}
+
+:focus-visible {
+  outline: 3px solid var(--hot);
+  outline-offset: 2px;
+}
+
+.board {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 20px 64px;
+}
+
+/* A black header with hazard tape under it, like the edge of a loading dock. */
+.masthead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 -20px;
+  padding: 28px 20px 22px;
+  background: var(--ink);
+  color: var(--label);
+  border-bottom: 14px solid transparent;
+  border-image: repeating-linear-gradient(-45deg, var(--hot) 0 14px, var(--ink) 14px 28px) 14;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--kraft);
+}
+
+h1 {
+  margin: 0;
+  font: 900 clamp(52px, 11vw, 104px) / 0.86 var(--display);
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+
+.lamp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 12px;
+  border: 1.5px solid var(--muted);
+  font-size: 12px;
+  color: var(--kraft);
+}
+
+.lamp::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.lamp.on {
+  border-color: var(--label);
+  color: var(--label);
+}
+
+.lamp.on::before {
+  background: var(--hot);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 40px 0 16px;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+h2::after {
+  content: '';
+  flex: 1;
+  border-top: 1.5px dashed var(--ink);
+}
+
+.quiet {
+  min-height: 1.5em;
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Each queue is a bin: a label with a strip of kraft tape and one very large number. */
+.bins {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 22px;
+}
+
+.bin {
+  position: relative;
+  padding: 26px 18px 16px;
+  background: var(--label);
+  border: 2px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.bin::before {
+  content: '';
+  position: absolute;
+  top: -9px;
+  left: 18px;
+  width: 74px;
+  height: 18px;
+  background: var(--kraft);
+  opacity: 0.9;
+  transform: rotate(-2deg);
+}
+
+.bin h3 {
+  margin: 0;
+  font: 600 13px/1 var(--mono);
+}
+
+.count {
+  margin: 10px 0 0;
+  font: 900 clamp(72px, 13vw, 128px) / 0.84 var(--display);
+  font-variant-numeric: tabular-nums;
+  animation: stamp 0.2s ease-out;
+}
+
+.unit {
+  margin: 4px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.hands {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px dotted var(--muted);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.bin.alarm {
+  background: var(--hot);
+  color: var(--ink);
+}
+
+.bin.alarm .hands {
+  border-top-color: var(--ink);
+  color: var(--ink);
+}
+
+.dock form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px 22px;
+}
+
+.dock label {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.dock input[type='number'] {
+  width: 96px;
+  padding: 9px 10px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--label);
+  font: 600 16px/1 var(--mono);
+  color: var(--ink);
+}
+
+.dock .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.dock input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.dock button {
+  padding: 11px 20px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--label);
+  font: 900 20px/1 var(--display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.dock button:hover:not(:disabled) {
+  background: var(--hot);
+  color: var(--ink);
+}
+
+.dock button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 12px;
+}
+
+.tally span {
+  padding: 4px 10px;
+  border: 1.5px solid var(--ink);
+  background: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Continuous-feed printer paper, newest line on top. */
+.feed {
+  max-height: 420px;
+  margin: 0;
+  padding: 6px 14px 6px 34px;
+  overflow-y: auto;
+  list-style: none;
+  background:
+    radial-gradient(circle at 15px 14px, var(--paper) 4px, transparent 4.5px) 0 0 / 30px 28px repeat-y,
+    var(--label);
+  border: 2px solid var(--ink);
+  font-size: 12px;
+}
+
+.line {
+  display: grid;
+  grid-template-columns: 74px 128px 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px dotted var(--muted);
+  animation: printed 0.9s ease-out;
+}
+
+.line:last-child {
+  border-bottom: none;
+}
+
+.line time,
+.line .who {
+  color: var(--muted);
+}
+
+.line .key {
+  font-weight: 600;
+}
+
+/* The colour is a marker beside the key, not the text itself, so the text stays readable. */
+.line .key::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  background: var(--ink);
+}
+
+.line.confirmed .key::before {
+  background: var(--kraft);
+}
+
+.line.packed .key::before {
+  background: var(--hot);
+}
+
+@media (max-width: 640px) {
+  .line {
+    grid-template-columns: 74px 1fr;
+    row-gap: 0;
+  }
+
+  .line .what,
+  .line .who {
+    grid-column: 2;
+  }
+}
+
+@keyframes stamp {
+  from {
+    transform: scale(1.18);
+    opacity: 0.4;
+  }
+}
+
+@keyframes printed {
+  from {
+    background: var(--kraft);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count,
+  .line,
+  .lamp.on::before {
+    animation: none;
+  }
+}

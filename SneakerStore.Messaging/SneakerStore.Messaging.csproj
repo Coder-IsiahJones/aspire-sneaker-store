@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Referenced here, so the API and the worker always get the same RabbitMQ client. -->
+    <PackageReference Include="Aspire.RabbitMQ.Client" Version="17.1.0-preview.1.26560.7" />
+  </ItemGroup>
+
+</Project>

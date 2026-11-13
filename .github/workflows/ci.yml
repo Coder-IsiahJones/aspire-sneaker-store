@@ -11,9 +11,17 @@ permissions:
   contents: read
 
 jobs:
-  web:
-    name: Frontend tests and build
+  frontends:
+    name: ${{ matrix.app }} tests and build
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # web is the Vue store. ops is the React back-room dashboard.
+        app: [web, ops]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -23,19 +31,16 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: web
 
       - name: Run tests
         run: npm test
-        working-directory: web
 
-      - name: Build frontend
+      - name: Build
         run: npm run build
-        working-directory: web
 
   api:
     name: API tests

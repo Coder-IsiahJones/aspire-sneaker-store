@@ -32,7 +32,14 @@ export const fakeBagApi = {
   removeFromWishlist: vi.fn(async (_sneakerId: string): Promise<Sneaker[]> => []),
   getOrders: vi.fn(async (): Promise<Order[]> => []),
   placeOrder: vi.fn(
-    async (): Promise<Order> => ({ id: 'order1', placedAt: '2026-06-01T12:00:00Z', lines: [], total: 0 }),
+    async (): Promise<Order> => ({
+      id: 'order1',
+      placedAt: '2026-06-01T12:00:00Z',
+      lines: [],
+      total: 0,
+      receiptSentAt: null,
+      packedAt: null,
+    }),
   ),
 }
 

@@ -187,6 +187,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               <span>Total</span>
               <span>{{ formatPrice(order.total) }}</span>
             </div>
+            <!-- Two separate jobs in the back room. Either can finish first. -->
+            <ul class="progress" aria-live="polite">
+              <li :class="{ done: order.receiptSentAt }">
+                <span class="tick" aria-hidden="true">{{ order.receiptSentAt ? '✓' : '' }}</span>
+                {{ order.receiptSentAt ? 'Receipt sent' : 'Receipt on its way' }}
+              </li>
+              <li :class="{ done: order.packedAt }">
+                <span class="tick" aria-hidden="true">{{ order.packedAt ? '✓' : '' }}</span>
+                {{ order.packedAt ? 'Packed' : 'Waiting to be packed' }}
+              </li>
+            </ul>
           </article>
         </div>
 
@@ -489,6 +500,45 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   margin-top: 10px;
   font: 900 22px/1 var(--display);
   text-transform: uppercase;
+}
+
+.progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border-top: 1.5px dashed var(--ink);
+  list-style: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.progress li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.progress .done {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tick {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid currentColor;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.done .tick {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--label);
 }
 
 .saved {

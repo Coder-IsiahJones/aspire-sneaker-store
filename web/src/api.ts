@@ -66,6 +66,15 @@ export interface Order {
   placedAt: string
   lines: OrderLine[]
   total: number
+  /** When the worker finished each job. Null until it has. The two can arrive in either order. */
+  receiptSentAt: string | null
+  packedAt: string | null
+}
+
+/** The data of an 'order.confirmed' or 'order.packed' event from GET /api/orders/events. */
+export interface OrderUpdate {
+  orderId: string
+  at: string
 }
 
 export class ApiError extends Error {
